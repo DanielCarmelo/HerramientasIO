@@ -1,0 +1,17 @@
+{
+  "name": "video-editor-automation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Headless automation + MCP server for editor-video.html",
+  "main": "scripts/editor_driver.mjs",
+  "bin": { "editor-mcp": "scripts/editor_mcp_server.mjs" },
+  "scripts": {
+    "demo": "node scripts/editor_demo.mjs",
+    "mcp": "node scripts/editor_mcp_server.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.57.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  }
+}

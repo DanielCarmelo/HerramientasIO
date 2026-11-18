@@ -1,0 +1,58 @@
+{
+  "version": 3,
+  "sources": [
+    { "fileName": "intro.mp4", "url": "https://example.com/intro.mp4" },
+    { "fileName": "main.mp4", "url": "https://example.com/main.mp4" },
+    { "fileName": "outro.mp4", "url": "https://example.com/outro.mp4" }
+  ],
+  "clips": [
+    {
+      "sourceId": "s1",
+      "name": "Intro",
+      "sourceStart": 0,
+      "sourceEnd": 3.5,
+      "speed": 1,
+      "filters": { "brightness": 105, "contrast": 100, "saturate": 110, "hue": 0, "blur": 0, "grayscale": 0, "sepia": 0, "invert": 0 },
+      "transform": { "rotate": 0, "flipH": false, "flipV": false, "scale": 100, "posX": 0, "posY": 0 },
+      "text": { "content": "Bienvenido", "color": "#ffffff", "size": 48, "opacity": 100, "position": "top-center", "bg": "shadow", "start": 0, "duration": 0 },
+      "stickers": [],
+      "transitions": { "inType": "fade-in", "inDur": 0.5, "outType": "none", "outDur": 0 },
+      "crossTransition": { "type": "wipe-right", "duration": 0.5 },
+      "audio": { "volume": 100, "fadeIn": 0.3, "fadeOut": 0 }
+    },
+    {
+      "sourceId": "s2",
+      "name": "Main",
+      "sourceStart": 1.0,
+      "sourceEnd": 6.0,
+      "speed": 1,
+      "filters": { "brightness": 100, "contrast": 105, "saturate": 130, "hue": 0, "blur": 0, "grayscale": 0, "sepia": 0, "invert": 0 },
+      "transform": { "rotate": 0, "flipH": false, "flipV": false, "scale": 100, "posX": 0, "posY": 0 },
+      "text": { "content": "", "color": "#ffffff", "size": 32, "opacity": 100, "position": "top-center", "bg": "none", "start": 0, "duration": 0 },
+      "stickers": [
+        { "emoji": "⭐", "x": 80, "y": 20, "size": 60, "opacity": 100, "rotation": 0, "start": 1.0, "duration": 2.0 }
+      ],
+      "transitions": { "inType": "none", "inDur": 0.5, "outType": "none", "outDur": 0 },
+      "crossTransition": { "type": "crossfade", "duration": 0.8 },
+      "audio": { "volume": 100, "fadeIn": 0, "fadeOut": 0 }
+    },
+    {
+      "sourceId": "s3",
+      "name": "Outro",
+      "sourceStart": 0,
+      "sourceEnd": 4.0,
+      "speed": 1,
+      "filters": { "brightness": 100, "contrast": 100, "saturate": 0, "hue": 0, "blur": 0, "grayscale": 100, "sepia": 0, "invert": 0 },
+      "transform": { "rotate": 0, "flipH": false, "flipV": false, "scale": 100, "posX": 0, "posY": 0 },
+      "text": { "content": "Gracias por ver", "color": "#ffffff", "size": 40, "opacity": 100, "position": "center", "bg": "shadow", "start": 0, "duration": 0 },
+      "stickers": [],
+      "transitions": { "inType": "none", "inDur": 0.5, "outType": "fade-black", "outDur": 0.6 },
+      "crossTransition": { "type": "none", "duration": 0 },
+      "audio": { "volume": 100, "fadeIn": 0, "fadeOut": 0.5 }
+    }
+  ],
+  "globalSpeed": 1,
+  "zoom": 1,
+  "muted": false,
+  "currentTime": 0
+}

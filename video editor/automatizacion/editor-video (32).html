@@ -1,0 +1,3779 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Editor de Video Pro</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel-2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e6e8ee;
+    --muted: #9aa0ac;
+    --accent: #5b8cff;
+    --accent-2: #7c5cff;
+    --danger: #ff5c5c;
+    --ok: #2ecc71;
+    --warn: #f0a93b;
+  }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    overflow: hidden;
+  }
+  .app { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 16px; }
+  .brand .logo {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    border-radius: 7px;
+    display: grid; place-items: center;
+    color: white; font-weight: 800;
+  }
+  .header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button {
+    font-family: inherit; font-size: 13px;
+    color: var(--text); background: var(--panel-2);
+    border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 8px;
+    cursor: pointer;
+    transition: background .15s, border-color .15s, transform .05s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover:not(:disabled) { background: #2a2f3a; }
+  button:active:not(:disabled) { transform: translateY(1px); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: none; color: white; font-weight: 600; }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+  button.danger { color: var(--danger); border-color: #5a2a2a; }
+  button.warn { color: var(--warn); border-color: #5a4a2a; }
+  button.icon { padding: 8px 10px; }
+  button.sm { padding: 6px 9px; font-size: 12px; }
+  button.active-toggle { background: var(--accent); color: white; border-color: var(--accent); }
+
+  main {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 1fr auto;
+    grid-template-areas: "stage aside" "timeline timeline";
+    gap: 12px; padding: 12px;
+    overflow: hidden; min-height: 0;
+  }
+  .stage { grid-area: stage; display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0; }
+  .preview-wrap {
+    flex: 1; background: #000;
+    border: 1px solid var(--border); border-radius: 12px;
+    position: relative; overflow: hidden;
+    display: grid; place-items: center; min-height: 0;
+  }
+  #dropzone {
+    position: absolute; inset: 0;
+    display: grid; place-items: center; text-align: center;
+    padding: 24px;
+    border: 2px dashed var(--border); border-radius: 12px;
+    margin: 8px; color: var(--muted); cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  #dropzone.drag { border-color: var(--accent); background: rgba(91,140,255,.08); }
+  #dropzone .dz-icon { font-size: 42px; margin-bottom: 8px; }
+  #dropzone .dz-title { font-size: 16px; color: var(--text); font-weight: 600; margin-bottom: 4px; }
+  #dropzone .dz-sub { font-size: 12px; }
+  #canvas {
+    max-width: 100%; max-height: 100%;
+    width: auto; height: auto;
+    object-fit: contain; background: #000;
+    display: block; touch-action: none;
+    /* aspect-ratio is set from JS to match the active video's dimensions */
+    border-radius: 4px;
+  }
+  .hidden { display: none !important; }
+  .preview-overlay-top {
+    position: absolute; top: 10px; left: 10px; right: 10px;
+    display: flex; justify-content: space-between;
+    pointer-events: none; font-size: 12px;
+    color: rgba(255,255,255,.85); text-shadow: 0 1px 2px rgba(0,0,0,.6);
+  }
+  .badge { background: rgba(0,0,0,.55); padding: 4px 8px; border-radius: 6px; backdrop-filter: blur(4px); }
+
+  .transport {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 10px; flex-wrap: wrap;
+  }
+  .time { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+  .time .cur { color: var(--text); }
+  select {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; font-family: inherit; font-size: 12px;
+  }
+
+  /* Timeline */
+  .timeline { grid-area: timeline; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; min-height: 180px; display: flex; flex-direction: column; }
+  .tl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px; }
+  .tl-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600; }
+  .tl-toolbar { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tl-toolbar button { padding: 5px 9px; font-size: 12px; border-radius: 6px; }
+
+  /* Scrollable timeline body (for zoom) */
+  .tl-scroll {
+    flex: 1; overflow-x: auto; overflow-y: hidden;
+    position: relative;
+    border-radius: 6px;
+    scrollbar-width: thin; scrollbar-color: #2a2f3a transparent;
+  }
+  .tl-scroll::-webkit-scrollbar { height: 8px; }
+  .tl-scroll::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 4px; }
+  .tl-scroll::-webkit-scrollbar-thumb:hover { background: #3a3f4a; }
+  .tl-inner {
+    position: relative; height: 100%;
+    min-width: 100%;
+  }
+  .tl-ruler { position: relative; height: 18px; color: var(--muted); font-size: 10px; margin-bottom: 4px; }
+  .tl-track { position: relative; height: 64px; background: var(--panel-2); border-radius: 6px; overflow: hidden; user-select: none; touch-action: none; }
+  .tl-track-bg { position: absolute; inset: 0; background-image: repeating-linear-gradient(90deg, #23262f 0 2px, transparent 2px 8px); opacity: .5; }
+  .tl-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .clip {
+    position: absolute; top: 4px; bottom: 4px;
+    border-radius: 5px; cursor: grab;
+    overflow: hidden; display: flex; flex-direction: column;
+    border: 2px solid transparent;
+    transition: border-color .12s, filter .12s;
+    color: white; min-width: 18px;
+  }
+  .clip.dragging { opacity: .5; cursor: grabbing; }
+  .clip.drop-target { border-color: var(--ok) !important; box-shadow: 0 0 0 2px var(--ok); }
+  .clip:hover { filter: brightness(1.1); }
+  .clip.selected { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); z-index: 2; }
+  .clip .clip-name { font-size: 11px; font-weight: 600; padding: 4px 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  .clip .clip-meta { font-size: 10px; padding: 0 7px 4px; opacity: .85; text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  .clip-resize { position: absolute; top: 0; bottom: 0; width: 8px; background: rgba(255,255,255,.25); cursor: ew-resize; z-index: 3; }
+  .clip-resize.left { left: 0; border-radius: 3px 0 0 3px; }
+  .clip-resize.right { right: 0; border-radius: 0 3px 3px 0; }
+  .clip-resize:hover { background: rgba(255,255,255,.5); }
+  .clip-drag-handle { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 6px; background: rgba(255,255,255,.4); border-radius: 0 0 3px 3px; cursor: grab; z-index: 4; }
+  .clip-drag-handle:hover { background: rgba(255,255,255,.7); }
+
+  /* Clip thumbnails strip */
+  .clip-thumbs { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; overflow: hidden; opacity: .55; pointer-events: none; }
+  .clip-thumbs img { height: 100%; flex: 1 0 0; min-width: 0; object-fit: cover; border-right: 1px solid rgba(0,0,0,.2); }
+  .clip-thumbs img:last-child { border-right: none; }
+  .clip-thumbs .thumb-empty { flex: 1; }
+  .clip .clip-name, .clip .clip-meta { position: relative; z-index: 2; }
+  .clip.selected .clip-thumbs { opacity: .7; }
+  .clip-thumbs.loading::after { content: "⏳"; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 14px; opacity: .6; }
+
+  .tl-playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--danger); z-index: 5; pointer-events: none; }
+  .tl-playhead::before { content: ""; position: absolute; top: -2px; left: -5px; width: 12px; height: 12px; background: var(--danger); transform: rotate(45deg); }
+
+  /* Transition strips on the timeline (non-overlapping, width = duration) */
+  .chain-strip {
+    position: absolute; top: 0; bottom: 0;
+    background: repeating-linear-gradient(45deg, rgba(124,92,255,.30) 0 5px, rgba(124,92,255,.15) 5px 10px);
+    border-left: 2px solid rgba(124,92,255,.6);
+    border-right: 2px solid rgba(124,92,255,.6);
+    z-index: 6; cursor: pointer; user-select: none;
+    transition: background .15s, border-color .15s, box-shadow .15s;
+    overflow: visible;
+  }
+  .chain-strip.kind-in { background: repeating-linear-gradient(45deg, rgba(91,140,255,.30) 0 5px, rgba(91,140,255,.15) 5px 10px); border-color: rgba(91,140,255,.7); }
+  .chain-strip.kind-out { background: repeating-linear-gradient(45deg, rgba(255,140,120,.30) 0 5px, rgba(255,140,120,.15) 5px 10px); border-color: rgba(255,140,120,.7); }
+  .chain-strip:hover { box-shadow: inset 0 0 0 2px rgba(255,255,255,.4); }
+  .chain-strip.selected {
+    box-shadow: inset 0 0 0 2px #fff, 0 0 8px rgba(124,92,255,.8);
+    background: repeating-linear-gradient(45deg, rgba(124,92,255,.55) 0 5px, rgba(124,92,255,.30) 5px 10px);
+  }
+  .chain-strip.kind-in.selected { background: repeating-linear-gradient(45deg, rgba(91,140,255,.55) 0 5px, rgba(91,140,255,.30) 5px 10px); }
+  .chain-strip.kind-out.selected { background: repeating-linear-gradient(45deg, rgba(255,140,120,.55) 0 5px, rgba(255,140,120,.30) 5px 10px); }
+  /* Glyph floats centered, always visible even on narrow strips */
+  .chain-strip .chain-strip-glyph {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 13px; pointer-events: none; line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,.8);
+    z-index: 2;
+  }
+  .chain-strip .chain-strip-kind {
+    position: absolute; bottom: 1px; left: 50%; transform: translateX(-50%);
+    font-size: 8px; font-weight: 700; letter-spacing: .5px;
+    background: rgba(0,0,0,.7); padding: 1px 4px; border-radius: 3px;
+    white-space: nowrap; pointer-events: none; color: #fff;
+    z-index: 2;
+  }
+  .chain-strip .chain-strip-dur {
+    position: absolute; top: 1px; left: 50%; transform: translateX(-50%);
+    font-size: 9px; opacity: .9; pointer-events: none;
+    background: rgba(0,0,0,.55); padding: 1px 3px; border-radius: 2px;
+    color: #fff; z-index: 2;
+  }
+
+  /* Inactive transition marker (corte seco): small vertical bar at the boundary */
+  .chain-marker {
+    position: absolute; top: 0; bottom: 0;
+    width: 14px;
+    background: rgba(154,163,178,.18);
+    border-left: 2px dashed rgba(154,163,178,.7);
+    border-right: 2px dashed rgba(154,163,178,.7);
+    z-index: 6; cursor: pointer; user-select: none;
+    display: flex; align-items: center; justify-content: center;
+    color: #9aa3b2; font-size: 10px; line-height: 1;
+    transition: background .15s, border-color .15s, box-shadow .15s;
+    overflow: hidden;
+  }
+  .chain-marker.kind-in { border-color: rgba(91,140,255,.7); color: #bcd2ff; }
+  .chain-marker.kind-out { border-color: rgba(255,140,120,.7); color: #ffd2c8; }
+  .chain-marker:hover {
+    background: rgba(124,92,255,.25); border-style: solid;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.4);
+  }
+  .chain-marker.selected {
+    background: rgba(124,92,255,.4); border-style: solid; border-color: #fff; color: #fff;
+    box-shadow: 0 0 8px rgba(124,92,255,.7);
+  }
+  .chain-marker .chain-marker-glyph { font-size: 9px; pointer-events: none; }
+  .chain-marker .chain-marker-kind {
+    position: absolute; bottom: 1px; font-size: 7px; font-weight: 700;
+    background: rgba(0,0,0,.6); padding: 1px 2px; border-radius: 2px;
+    pointer-events: none;
+  }
+
+  /* Text overlay bar inside a clip (draggable) */
+  .clip-textbar {
+    position: absolute; bottom: 2px; height: 14px;
+    background: rgba(240,169,59,.85); color: #1a1205;
+    border-radius: 3px; z-index: 4;
+    display: none; overflow: hidden;
+    cursor: move; user-select: none;
+    border: 1px solid rgba(0,0,0,.3);
+  }
+  .clip-textbar .textbar-label {
+    display: block; font-size: 9px; font-weight: 600;
+    padding: 1px 6px; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .textbar-handle {
+    position: absolute; top: 0; bottom: 0; width: 6px;
+    background: rgba(0,0,0,.4); cursor: ew-resize; z-index: 5;
+  }
+  .textbar-handle.textbar-left { left: 0; border-radius: 3px 0 0 3px; }
+  .textbar-handle.textbar-right { right: 0; border-radius: 0 3px 3px 0; }
+  .textbar-handle:hover { background: rgba(0,0,0,.7); }
+
+  /* Sticker time-window bars (one per sticker, stacked) */
+  .clip-stickerbar {
+    position: absolute; height: 11px;
+    background: rgba(124,92,255,.85); color: #fff;
+    border-radius: 3px; z-index: 4;
+    overflow: hidden; cursor: move; user-select: none;
+    border: 1px solid rgba(0,0,0,.3);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .clip-stickerbar.selected {
+    background: rgba(124,92,255,1);
+    box-shadow: 0 0 0 1.5px #fff, 0 0 6px rgba(124,92,255,.6);
+    z-index: 5;
+  }
+  .clip-stickerbar .stickerbar-label {
+    font-size: 10px; line-height: 1; padding: 0 2px;
+    pointer-events: none;
+  }
+  .stickerbar-handle {
+    position: absolute; top: 0; bottom: 0; width: 5px;
+    background: rgba(0,0,0,.4); cursor: ew-resize; z-index: 5;
+  }
+  .stickerbar-handle.stickerbar-left { left: 0; border-radius: 3px 0 0 3px; }
+  .stickerbar-handle.stickerbar-right { right: 0; border-radius: 0 3px 3px 0; }
+  .stickerbar-handle:hover { background: rgba(0,0,0,.7); }
+
+
+  .tl-footer { margin-top: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; }
+
+  /* Zoom control (bottom-right corner of timeline) */
+  .zoom-bar {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 8px;
+  }
+  .zoom-bar label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .zoom-bar input[type="range"] { width: 110px; }
+  .zoom-bar .zoom-val { font-size: 11px; color: var(--accent); font-variant-numeric: tabular-nums; min-width: 36px; text-align: right; }
+  .zoom-bar button { padding: 3px 8px; font-size: 11px; border-radius: 4px; }
+
+  /* Side panel */
+  aside { grid-area: aside; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow-y: auto; overflow-x: hidden; }
+  aside::-webkit-scrollbar { width: 8px; }
+  aside::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 4px; }
+  .tabs { display: flex; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+  .tab { flex: 1; padding: 10px 4px; background: transparent; border: none; border-radius: 0; border-bottom: 2px solid transparent; color: var(--muted); font-size: 12px; cursor: pointer; text-align: center; }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab-content { display: none; padding: 14px; }
+  .tab-content.active { display: block; }
+
+  .panel-hint { font-size: 12px; color: var(--muted); padding: 8px; background: var(--panel-2); border-radius: 6px; margin-bottom: 12px; line-height: 1.4; }
+  .group { margin-bottom: 16px; }
+  .group-title { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 10px; font-weight: 600; }
+  .field { margin-bottom: 12px; }
+  .field label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text); margin-bottom: 6px; }
+  .field label .val { color: var(--accent); font-variant-numeric: tabular-nums; }
+  input[type="range"] { -webkit-appearance: none; width: 100%; height: 4px; background: var(--panel-2); border-radius: 2px; outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid #fff2; }
+  input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--accent); cursor: pointer; border: 2px solid #fff2; }
+  input[type="text"], input[type="number"] { width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text); padding: 7px 9px; border-radius: 6px; font-family: inherit; font-size: 13px; }
+  input[type="color"] { width: 100%; height: 32px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; padding: 2px; }
+  .row { display: flex; gap: 8px; }
+  .row > * { flex: 1; }
+  .toggle-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggle-group button { flex: 1; min-width: 50px; padding: 6px 8px; font-size: 12px; }
+
+  /* Stickers grid */
+  .sticker-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; margin-bottom: 10px; }
+  .sticker-grid button { padding: 6px; font-size: 20px; aspect-ratio: 1; display: grid; place-items: center; }
+  .sticker-list { display: flex; flex-direction: column; gap: 6px; }
+  .sticker-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--panel-2); border-radius: 6px; font-size: 13px; }
+  .sticker-item .emoji { font-size: 22px; }
+  .sticker-item .name { flex: 1; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sticker-item .del { padding: 4px 8px; font-size: 11px; background: transparent; border: 1px solid var(--border); }
+  .sticker-item .del:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* Modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: none; place-items: center; z-index: 50; padding: 16px; }
+  .modal-backdrop.show { display: grid; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; width: 100%; max-width: 480px; box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+  .modal h3 { margin-bottom: 6px; font-size: 18px; }
+  .modal p { color: var(--muted); margin-bottom: 16px; font-size: 13px; }
+  .progress { width: 100%; height: 8px; background: var(--panel-2); border-radius: 4px; overflow: hidden; margin: 14px 0; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); width: 0%; transition: width .1s; }
+  .progress-bar.stage-2 { background: linear-gradient(90deg, var(--warn), var(--ok)); }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+  .format-sel { display: flex; gap: 8px; margin-bottom: 14px; }
+  .format-sel label { flex: 1; display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; background: var(--panel-2); text-align: center; font-size: 13px; }
+  .format-sel label.selected { border-color: var(--accent); background: rgba(91,140,255,.1); }
+  .format-sel input { display: none; }
+  .format-sel small { color: var(--muted); font-size: 11px; }
+
+  /* Toast */
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--panel); border: 1px solid var(--border); padding: 10px 18px; border-radius: 10px; color: var(--text); opacity: 0; transition: opacity .25s, transform .25s; z-index: 100; pointer-events: none; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4); max-width: 90vw; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.error { border-color: var(--danger); }
+  .toast.ok { border-color: var(--ok); }
+
+  @media (max-width: 900px) {
+    main { grid-template-columns: 1fr; grid-template-areas: "stage" "aside" "timeline"; overflow-y: auto; }
+    .stage { min-height: 40vh; }
+    aside { max-height: 60vh; }
+    header { padding: 8px 12px; }
+    .brand { font-size: 14px; }
+    .timeline { min-height: 220px; }
+  }
+  @media (max-width: 480px) {
+    .header-actions button { padding: 7px 10px; font-size: 12px; }
+    .brand .logo { width: 24px; height: 24px; font-size: 12px; }
+    .tl-toolbar button { padding: 5px 7px; font-size: 11px; }
+    .sticker-grid { grid-template-columns: repeat(5, 1fr); }
+    .zoom-bar input[type="range"] { width: 80px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand">
+      <div class="logo">V</div>
+      <span>Editor de Video Pro</span>
+    </div>
+    <div class="header-actions">
+      <button id="btnImport" class="icon">＋ Añadir video</button>
+      <button id="btnSave" class="icon" disabled>💾 Guardar</button>
+      <button id="btnLoad" class="icon" disabled>📁 Cargar</button>
+      <button id="btnRecover" class="icon" disabled title="Recuperar el último proyecto autoguardado en este navegador">♻ Recuperar</button>
+      <button id="btnReset" class="danger">↺ Reiniciar</button>
+      <button id="btnExport" class="primary" disabled>⬇ Exportar</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="stage">
+      <div class="preview-wrap" id="previewWrap">
+        <div id="dropzone">
+          <div class="dz-icon">🎬</div>
+          <div class="dz-title">Arrastra tu video aquí o haz clic</div>
+          <div class="dz-sub">MP4, WebM, MOV · puedes añadir varios videos</div>
+        </div>
+        <canvas id="canvas" class="hidden" touch-action="none"></canvas>
+        <div class="preview-overlay-top hidden" id="overlayTop">
+          <span class="badge" id="resBadge">—</span>
+          <span class="badge" id="clipBadge">—</span>
+        </div>
+        <input type="file" id="fileInput" accept="video/*" multiple class="hidden">
+        <input type="file" id="projectInput" accept=".json,application/json" class="hidden">
+      </div>
+
+      <div class="transport">
+        <button id="btnPlay" class="icon" disabled>▶</button>
+        <button id="btnStop" class="icon" disabled>⏹</button>
+        <button id="btnPrev" class="icon" disabled>⏮</button>
+        <button id="btnNext" class="icon" disabled>⏭</button>
+        <div class="time"><span class="cur" id="curTime">0:00</span> / <span id="durTime">0:00</span></div>
+        <div style="flex:1"></div>
+        <select id="speedSel" disabled>
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="0.75">0.75×</option>
+          <option value="1" selected>1×</option>
+          <option value="1.25">1.25×</option>
+          <option value="1.5">1.5×</option>
+          <option value="2">2×</option>
+        </select>
+        <button id="btnMute" class="icon" disabled>🔊</button>
+      </div>
+    </div>
+
+    <aside>
+      <div class="tabs">
+        <button class="tab active" data-tab="filters">🎨 Filtros</button>
+        <button class="tab" data-tab="transform">↺ Transf.</button>
+        <button class="tab" data-tab="text">T Texto</button>
+        <button class="tab" data-tab="stickers">★ Stickers</button>
+        <button class="tab" data-tab="transitions">⇄ Trans.</button>
+        <button class="tab" data-tab="audio">🔊 Audio</button>
+      </div>
+
+      <div class="tab-content active" data-content="filters">
+        <div class="panel-hint">Los ajustes se aplican al clip <b id="hintClipName">seleccionado</b>.</div>
+        <div class="group">
+          <div class="group-title">Ajustes de color</div>
+          <div class="field"><label>Brillo <span class="val" id="brightnessVal">100%</span></label><input type="range" id="brightness" min="0" max="200" value="100"></div>
+          <div class="field"><label>Contraste <span class="val" id="contrastVal">100%</span></label><input type="range" id="contrast" min="0" max="200" value="100"></div>
+          <div class="field"><label>Saturación <span class="val" id="saturateVal">100%</span></label><input type="range" id="saturate" min="0" max="300" value="100"></div>
+          <div class="field"><label>Tono <span class="val" id="hueVal">0°</span></label><input type="range" id="hue" min="0" max="360" value="0"></div>
+          <div class="field"><label>Desenfoque <span class="val" id="blurVal">0px</span></label><input type="range" id="blur" min="0" max="20" value="0"></div>
+        </div>
+        <div class="group">
+          <div class="group-title">Filtros predefinidos</div>
+          <div class="toggle-group">
+            <button data-preset="none" class="active-toggle">Ninguno</button>
+            <button data-preset="grayscale">B&amp;N</button>
+            <button data-preset="sepia">Sepia</button>
+            <button data-preset="invert">Invertir</button>
+            <button data-preset="vintage">Vintage</button>
+            <button data-preset="cool">Frío</button>
+            <button data-preset="warm">Cálido</button>
+            <button data-preset="vivid">Vívido</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" data-content="transform">
+        <div class="group">
+          <div class="group-title">Rotación</div>
+          <div class="toggle-group">
+            <button data-rotate="0" class="active-toggle">0°</button>
+            <button data-rotate="90">90°</button>
+            <button data-rotate="180">180°</button>
+            <button data-rotate="270">270°</button>
+          </div>
+        </div>
+        <div class="group">
+          <div class="group-title">Voltear</div>
+          <div class="toggle-group">
+            <button id="flipH">↔ Voltear H</button>
+            <button id="flipV">↕ Voltear V</button>
+          </div>
+        </div>
+        <div class="group">
+          <div class="group-title">Velocidad del clip</div>
+          <div class="field"><label>Velocidad <span class="val" id="clipSpeedVal">1×</span></label><input type="range" id="clipSpeed" min="25" max="400" value="100"></div>
+        </div>
+        <div class="group">
+          <div class="group-title">Zoom y posición</div>
+          <div class="field"><label>Escala <span class="val" id="scaleVal">100%</span></label><input type="range" id="scale" min="50" max="300" value="100"></div>
+          <div class="field"><label>Posición X <span class="val" id="posXVal">0</span></label><input type="range" id="posX" min="-100" max="100" value="0"></div>
+          <div class="field"><label>Posición Y <span class="val" id="posYVal">0</span></label><input type="range" id="posY" min="-100" max="100" value="0"></div>
+        </div>
+      </div>
+
+      <div class="tab-content" data-content="text">
+        <div class="field"><label>Texto a superponer</label><input type="text" id="textContent" placeholder="Escribe algo..." maxlength="120"></div>
+        <div class="field"><label>Color</label><input type="color" id="textColor" value="#ffffff"></div>
+        <div class="row">
+          <div class="field"><label>Tamaño <span class="val" id="textSizeVal">32</span></label><input type="range" id="textSize" min="10" max="120" value="32"></div>
+          <div class="field"><label>Opacidad <span class="val" id="textOpacityVal">100%</span></label><input type="range" id="textOpacity" min="0" max="100" value="100"></div>
+        </div>
+        <div class="field"><label>Posición</label>
+          <select id="textPos">
+            <option value="top-left">Arriba izquierda</option>
+            <option value="top-center" selected>Arriba centro</option>
+            <option value="top-right">Arriba derecha</option>
+            <option value="center">Centro</option>
+            <option value="bottom-left">Abajo izquierda</option>
+            <option value="bottom-center">Abajo centro</option>
+            <option value="bottom-right">Abajo derecha</option>
+          </select>
+        </div>
+        <div class="field"><label>Fondo</label>
+          <select id="textBg">
+            <option value="none">Sin fondo</option>
+            <option value="solid">Sólido</option>
+            <option value="outline">Contorno</option>
+            <option value="shadow">Sombra</option>
+          </select>
+        </div>
+        <div class="group">
+          <div class="group-title">Duración en la línea de tiempo</div>
+          <div class="panel-hint">Define cuándo aparece el texto dentro del clip. <b>Inicio</b> = segundo desde el que empieza; <b>Duración</b> = cuánto dura (0 = todo el clip). También puedes arrastrar la barra naranja directamente en la timeline.</div>
+          <div class="field"><label>Inicio (seg) <span class="val" id="textStartVal">0.0</span></label><input type="range" id="textStart" min="0" max="60" step="0.1" value="0"></div>
+          <div class="field"><label>Duración (seg) <span class="val" id="textDurationVal">0 = todo</span></label><input type="range" id="textDuration" min="0" max="60" step="0.1" value="0"></div>
+        </div>
+      </div>
+
+      <div class="tab-content" data-content="stickers">
+        <div class="panel-hint">Clic en un sticker para añadirlo al clip seleccionado. Arrastra los stickers para posicionarlos.</div>
+        <div class="group">
+          <div class="group-title">Stickers disponibles</div>
+          <div class="sticker-grid" id="stickerGrid"></div>
+        </div>
+        <div class="group">
+          <div class="group-title">Stickers del clip <span id="stickerCount" style="color:var(--accent);font-weight:normal;">(0)</span></div>
+          <div class="sticker-list" id="stickerList">
+            <div style="color:var(--muted); font-size:12px; padding:8px;">No hay stickers en este clip.</div>
+          </div>
+        </div>
+        <div class="group" id="stickerEditGroup" style="display:none;">
+          <div class="group-title">Editar sticker seleccionado</div>
+          <div class="field"><label>Tamaño <span class="val" id="stkSizeVal">80</span></label><input type="range" id="stkSize" min="20" max="400" value="80"></div>
+          <div class="field"><label>Opacidad <span class="val" id="stkOpacityVal">100%</span></label><input type="range" id="stkOpacity" min="0" max="100" value="100"></div>
+          <div class="field"><label>Rotación <span class="val" id="stkRotVal">0°</span></label><input type="range" id="stkRot" min="0" max="360" value="0"></div>
+          <div class="panel-hint" style="margin-top:14px;">Define cuándo aparece este sticker dentro del clip. <b>Inicio</b> = segundo desde el que aparece; <b>Duración</b> = cuánto dura (0 = todo el clip). También puedes arrastrar la barra morada directamente en la timeline.</div>
+          <div class="field"><label>Inicio (seg) <span class="val" id="stkStartVal">0.0</span></label><input type="range" id="stkStart" min="0" max="60" step="0.1" value="0"></div>
+          <div class="field"><label>Duración (seg) <span class="val" id="stkDurationVal">0 = todo</span></label><input type="range" id="stkDuration" min="0" max="60" step="0.1" value="0"></div>
+          <button id="stkDelete" class="danger" style="width:100%;">🗑 Eliminar sticker</button>
+        </div>
+      </div>
+
+      <div class="tab-content" data-content="transitions">
+        <div class="panel-hint">Las transiciones son <b>eslabones de cadena</b> entre clips. En la timeline verás un icono de eslabón 🔗 al inicio del primer clip y entre cada par de clips. Haz clic en un eslabón para editarlo aquí. Cada eslabón afecta cómo <b>entra</b> el clip que está a su derecha.</div>
+        <div id="linkNone" class="panel-hint" style="display:none; padding:10px; border:1px dashed var(--muted); border-radius:6px;">No hay ningún eslabón seleccionado. Haz clic en un 🔗 de la timeline para editarlo.</div>
+        <div id="linkEditor" style="display:none;">
+          <div class="group">
+            <div class="group-title" id="linkTitle">Eslabón seleccionado</div>
+            <div class="field"><label id="linkKindLabel">Tipo de eslabón</label>
+              <div id="linkKind" style="font-size:12px; color:var(--muted); padding:2px 0 8px;"></div>
+            </div>
+            <div class="field">
+              <label>Tipo de transición</label>
+              <select id="linkType">
+                <option value="none">Sin transición</option>
+                <option value="crossfade">Crossfade (mezcla suave)</option>
+                <option value="fade-black">Fade desde/a negro</option>
+                <option value="fade-white">Fade desde/a blanco</option>
+                <option value="fade-in">Fade suave (opacidad)</option>
+                <option value="wipe-left">Wipe izquierda</option>
+                <option value="wipe-right">Wipe derecha</option>
+                <option value="wipe-up">Wipe arriba</option>
+                <option value="wipe-down">Wipe abajo</option>
+                <option value="slide-left">Deslizar desde derecha</option>
+                <option value="slide-right">Deslizar desde izquierda</option>
+                <option value="slide-up">Deslizar desde abajo</option>
+                <option value="slide-down">Deslizar desde arriba</option>
+                <option value="zoom-in">Zoom in</option>
+                <option value="zoom-out">Zoom out</option>
+              </select>
+            </div>
+            <div class="field"><label id="linkDurLabel">Duración / solapamiento (seg) <span class="val" id="linkDurVal">0.0</span></label><input type="range" id="linkDur" min="0" max="5" step="0.1" value="0"></div>
+            <div id="linkHint" style="font-size:11px; color:var(--muted); padding:6px 0;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" data-content="audio">
+        <div class="group">
+          <div class="group-title">Volumen</div>
+          <div class="field"><label>Volumen <span class="val" id="volumeVal">100%</span></label><input type="range" id="volume" min="0" max="200" value="100"></div>
+        </div>
+        <div class="group">
+          <div class="group-title">Fade de audio</div>
+          <div class="field"><label>Fade in (seg) <span class="val" id="fadeInVal">0</span></label><input type="range" id="fadeIn" min="0" max="10" step="0.1" value="0"></div>
+          <div class="field"><label>Fade out (seg) <span class="val" id="fadeOutVal">0</span></label><input type="range" id="fadeOut" min="0" max="10" step="0.1" value="0"></div>
+        </div>
+        <div class="group" style="font-size:12px; color:var(--muted); line-height:1.5;">
+          <strong style="color:var(--text);">Nota:</strong> durante la vista previa el audio suena tal cual. Al exportar, el audio se mezcla con los fades aplicados clip por clip.
+        </div>
+      </div>
+    </aside>
+
+    <div class="timeline">
+      <div class="tl-header">
+        <div class="tl-title">Línea de tiempo · clips (arrastra ⠿ para reordenar · rueda = scroll · Ctrl+rueda = zoom)</div>
+        <div class="tl-toolbar">
+          <button id="btnSelect" class="sm active-toggle" title="Seleccionar clip">▣ Seleccionar</button>
+          <button id="btnSplit" class="sm" disabled title="Dividir en el cursor (Ctrl+S)">✂️ Dividir</button>
+          <button id="btnCopy" class="sm" disabled title="Copiar (Ctrl+C)">📋 Copiar</button>
+          <button id="btnCut" class="sm" disabled title="Cortar (Ctrl+X)">✂️ Cortar</button>
+          <button id="btnPaste" class="sm" disabled title="Pegar (Ctrl+V)">📥 Pegar</button>
+          <button id="btnDuplicate" class="sm" disabled title="Duplicar (Ctrl+D)">⧉ Duplicar</button>
+          <button id="btnDelete" class="sm" disabled title="Eliminar (Supr)">🗑 Eliminar</button>
+        </div>
+      </div>
+      <div class="tl-scroll" id="tlScroll">
+        <div class="tl-inner" id="tlInner">
+          <div class="tl-ruler" id="tlRuler"></div>
+          <div class="tl-track" id="tlTrack">
+            <div class="tl-track-bg"></div>
+            <div class="tl-empty" id="tlEmpty">Importa un video para empezar</div>
+          </div>
+        </div>
+      </div>
+      <div class="tl-footer">
+        <span>Clip: <span id="footClip">—</span></span>
+        <span>Inicio: <span id="footStart">0:00</span> · Fin: <span id="footEnd">0:00</span></span>
+        <span>Total: <span id="footTotal">0:00</span></span>
+        <div class="zoom-bar">
+          <button id="btnZoomOut" title="Alejar">−</button>
+          <label>Zoom</label>
+          <input type="range" id="zoomSlider" min="10" max="400" value="100" step="5">
+          <span class="zoom-val" id="zoomVal">100%</span>
+          <button id="btnZoomIn" title="Acercar">＋</button>
+          <button id="btnZoomFit" title="Ajustar a la ventana">⤢</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Export modal -->
+<div class="modal-backdrop" id="exportModal">
+  <div class="modal">
+    <h3>Exportar video</h3>
+    <p>Elige el formato de salida.</p>
+    <div class="format-sel" id="formatSel">
+      <label data-format="webm" class="selected">
+        <input type="radio" name="fmt" value="webm" checked>
+        <b>WebM</b>
+        <small>Rápido · nativo del navegador</small>
+      </label>
+      <label data-format="mp4">
+        <input type="radio" name="fmt" value="mp4">
+        <b>MP4 (H.264)</b>
+        <small>Compatible · usa ffmpeg.wasm (~25MB)</small>
+      </label>
+    </div>
+    <p id="exportStatus">Procesando... no cierres esta ventana.</p>
+    <div class="progress"><div class="progress-bar" id="exportProgress"></div></div>
+    <div class="modal-actions">
+      <button id="btnCancelExport" class="danger">Cancelar</button>
+      <button id="btnDownloadResult" class="primary hidden">Descargar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const state = {
+    sources: [],          // [{id, url, el, duration, width, height, fileName}]
+    clips: [],
+    selectedClipId: null,
+    clipboard: null,
+    currentTime: 0,
+    isPlaying: false,
+    globalSpeed: 1,
+    muted: false,
+    canvas: null,
+    ctx: null,
+    rafId: null,
+    audioCtx: null,
+    mediaStreamDest: null,
+    masterGain: null,
+    srcNodes: new Map(),  // sourceId -> {node, gain} for audio routing
+    mediaRecorder: null,
+    exportCancel: false,
+    activeClipId: null,
+    selectedStickerIdx: -1,
+    selectedLinkId: null,   // 'in-<clipIdx>' (clip entrance) or 'cross-<clipIdx>' (overlap with next)
+    thumbCache: new Map(),  // clipId -> {key, thumbs[]}
+    frameCache: new Map(),  // clipId -> { first: HTMLCanvasElement|null, last: HTMLCanvasElement|null, key: string, busy: boolean }
+    thumbBusy: new Set(),
+    zoom: 1,               // timeline zoom factor (1 = fit)
+    selectedSourceId: null // currently displayed source for canvas size
+  };
+
+  const CLIP_COLORS = ['#5b8cff','#2ecc71','#f0a93b','#e74c8e','#7c5cff','#ff8c42','#42c9ff','#c44eff'];
+  let clipCounter = 0;
+  let sourceCounter = 0;
+  function newClipId() { return 'c' + (++clipCounter); }
+  function newSourceId() { return 's' + (++sourceCounter); }
+
+  const STICKER_LIST = [
+    '😀','😂','😍','🤩','😎','🤔','😭','😡',
+    '👍','👎','👏','🙌','🙏','💪','👋','✌️',
+    '❤️','🔥','✨','⭐','💯','🎉','🎊','🎈',
+    '☀️','🌙','🌈','⚡','❄️','🌊','🌸','🍀',
+    '👀','💅','🤳','💃','🕺','🏆','🥇','🎯',
+    '💰','💎','🚀','🎸','⚽','🏀','🍕','☕'
+  ];
+
+  function defaultClipSettings() {
+    return {
+      filters: { brightness:100, contrast:100, saturate:100, hue:0, blur:0, grayscale:0, sepia:0, invert:0 },
+      transform: { rotate:0, flipH:false, flipV:false, scale:100, posX:0, posY:0 },
+      text: { content:'', color:'#ffffff', size:32, opacity:100, position:'top-center', bg:'none', start:0, duration:0 },
+      stickers: [],
+      transitions: { inType:'none', inDur:0.5, outType:'none', outDur:0.5 },
+      crossTransition: { type:'none', duration:0 }, // overlap with the NEXT clip
+      audio: { volume:100, fadeIn:0, fadeOut:0 },
+      speed: 1
+    };
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const canvas = $('canvas');
+  const ctx = canvas.getContext('2d');
+  state.canvas = canvas;
+  state.ctx = ctx;
+
+  let toastTimer;
+  function toast(msg, type = '') {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.remove('show'), 2800);
+  }
+
+  function fmtTime(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2,'0')}`;
+  }
+
+  function clipDuration(c) { return Math.max(0, (c.sourceEnd - c.sourceStart) / c.speed); }
+
+  // ========= Non-overlapping transition model =========
+  // Transitions occupy their OWN time slot between clips (no overlap).
+  // A transition link sits between clip i and clip i+1 (or at the start/end of the project)
+  // and its `duration` is the width of that strip on the timeline.
+  //
+  // Link kinds:
+  //   in-i  : entrance of clip 0 (strip BEFORE clip 0, at project start)
+  //   cross-i: transition strip BETWEEN clip i and clip i+1
+  //   out-i : exit of the last clip (strip AFTER the last clip, at project end)
+
+  // Duration (in seconds) of a transition strip. 0 if the link is disabled.
+  function linkDuration(c, kind, idx) {
+    if (kind === 'in') {
+      return (c.transitions.inType === 'none') ? 0 : Math.max(0, c.transitions.inDur);
+    }
+    if (kind === 'out') {
+      return (c.transitions.outType === 'none') ? 0 : Math.max(0, c.transitions.outDur);
+    }
+    // cross
+    if (!c.crossTransition || c.crossTransition.type === 'none') return 0;
+    return Math.max(0, c.crossTransition.duration || 0);
+  }
+  // Total time taken by ALL transition strips (between + boundaries).
+  function totalLinkDuration() {
+    let acc = 0;
+    const n = state.clips.length;
+    if (n === 0) return 0;
+    acc += linkDuration(state.clips[0], 'in', 0);
+    for (let i = 0; i < n - 1; i++) acc += linkDuration(state.clips[i], 'cross', i);
+    acc += linkDuration(state.clips[n - 1], 'out', n - 1);
+    return acc;
+  }
+  // Clip i start/end on the timeline, accounting for strips before/after each clip.
+  function clipEndTime(i) {
+    let acc = 0;
+    const n = state.clips.length;
+    // Entrance strip before clip 0
+    if (n > 0) acc += linkDuration(state.clips[0], 'in', 0);
+    for (let k = 0; k <= i; k++) {
+      acc += clipDuration(state.clips[k]);
+      if (k < i) acc += linkDuration(state.clips[k], 'cross', k);
+    }
+    return acc;
+  }
+  function clipStartTime(i) {
+    if (i === 0) return linkDuration(state.clips[0], 'in', 0);
+    // clip i starts after clip i-1 ends + the cross strip between them
+    return clipEndTime(i - 1) + linkDuration(state.clips[i - 1], 'cross', i - 1);
+  }
+  function totalDuration() {
+    if (state.clips.length === 0) return 0;
+    // clipEndTime(last) + exit strip of last clip
+    return clipEndTime(state.clips.length - 1) + linkDuration(state.clips[state.clips.length - 1], 'out', state.clips.length - 1);
+  }
+
+  function getSelectedClip() { return state.clips.find(c => c.id === state.selectedClipId) || null; }
+  function getSource(id) { return state.sources.find(s => s.id === id) || null; }
+  function escapeHtml(s) { return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  // Keep the preview canvas's CSS aspect-ratio in sync with its internal resolution,
+  // so the visible box respects the video's aspect ratio (e.g. vertical 9:16) instead
+  // of always stretching to fill the whole .preview-wrap area.
+  function applyCanvasAspect() {
+    const canvas = $('canvas');
+    const w = canvas.width, h = canvas.height;
+    if (w && h) canvas.style.aspectRatio = (w + ' / ' + h);
+  }
+
+  // ========= Frame capture for transitions =========
+  // Captures the first and last frame of a clip's source into small offscreen canvases,
+  // so transition strips can render a static frame with an animated effect (instead of
+  // trying to play two videos at once).
+  function frameCacheKey(clip) {
+    return `${clip.sourceId}|${clip.sourceStart.toFixed(3)}|${clip.sourceEnd.toFixed(3)}|${clip.speed}`;
+  }
+  function getFrameCache(clip) {
+    const key = frameCacheKey(clip);
+    let entry = state.frameCache.get(clip.id);
+    if (!entry) {
+      entry = { first: null, last: null, key: '', busy: false };
+      state.frameCache.set(clip.id, entry);
+    }
+    // If the clip's shape changed mid-capture, the in-flight capture is now stale:
+    // drop its results and clear busy so a fresh capture can start.
+    if (entry.key !== key) { entry.first = null; entry.last = null; entry.busy = false; }
+    return entry;
+  }
+  // Capture one frame from a source at the given time, into a canvas sized to the source.
+  // Times out after 1.5s so a stuck 'seeked' event (rare codec / network stall) can never
+  // leave entry.busy = true forever and freeze all future captures for this clip.
+  function captureFrame(src, sourceTime) {
+    return new Promise((resolve) => {
+      if (!src || !src.el) { resolve(null); return; }
+      const v = src.el;
+      let settled = false;
+      const finish = (val) => { if (settled) return; settled = true; v.removeEventListener('seeked', onSeeked); resolve(val); };
+      const onSeeked = () => {
+        try {
+          const c = document.createElement('canvas');
+          c.width = v.videoWidth || 640;
+          c.height = v.videoHeight || 360;
+          c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+          finish(c);
+        } catch (e) { finish(null); }
+      };
+      v.addEventListener('seeked', onSeeked);
+      const timer = setTimeout(() => finish(null), 1500);
+      const wrapFinish = (val) => { clearTimeout(timer); finish(val); };
+      try { v.currentTime = Math.max(0, Math.min((src.duration || 0) - 0.01, sourceTime)); }
+      catch (e) { wrapFinish(null); }
+    });
+  }
+  // Capture (or refresh) the first & last frames for a clip. Async, fire-and-forget.
+  function captureClipFrames(clip) {
+    const entry = getFrameCache(clip);
+    const key = frameCacheKey(clip);
+    if (entry.key === key && entry.first && entry.last) return; // already up-to-date
+    if (entry.busy) return;
+    const src = getSource(clip.sourceId);
+    if (!src) return;
+    entry.busy = true;
+    entry.key = key;
+    (async () => {
+      const first = await captureFrame(src, clip.sourceStart);
+      const last = await captureFrame(src, Math.max(0, clip.sourceEnd - 0.01));
+      entry.first = first;
+      entry.last = last;
+      entry.busy = false;
+      // Re-draw if the current frame is a transition involving this clip
+      if (!state.isPlaying) drawFrame();
+    })();
+  }
+  // Capture ONE frame at a specific source time and store it as the clip's `first` or `last`.
+  // Used by splitAtPlayhead so that the boundary frame of A (last) and B (first) are the
+  // EXACT same frame at the cut point (no off-by-one-frame asymmetry).
+  // Marks entry.busy so captureClipFrames won't race in and overwrite our captured frame
+  // with sourceStart/sourceEnd captures while we await the seeked event.
+  function captureClipFrameAt(clip, which, sourceTime) {
+    const entry = getFrameCache(clip);
+    const src = getSource(clip.sourceId);
+    if (!src) return;
+    entry.key = frameCacheKey(clip); // mark cache as initialized for this clip shape
+    if (entry.busy) return; // another capture in flight; let it finish
+    entry.busy = true;
+    (async () => {
+      try {
+        const c = await captureFrame(src, sourceTime);
+        if (which === 'first') entry.first = c;
+        else entry.last = c;
+        // Fill the other slot if missing, so the cache is complete
+        if (!entry.first && which !== 'first') entry.first = await captureFrame(src, clip.sourceStart);
+        if (!entry.last && which !== 'last') entry.last = await captureFrame(src, Math.max(0, clip.sourceEnd - 0.01));
+      } finally {
+        entry.busy = false;
+        if (!state.isPlaying) drawFrame();
+      }
+    })();
+  }
+  function invalidateClipFrames(clipId) {
+    const entry = state.frameCache.get(clipId);
+    if (entry) { entry.first = null; entry.last = null; entry.key = ''; }
+  }
+  function refreshClipFrames(clip) {
+    if (!clip) return;
+    invalidateClipFrames(clip.id);
+    captureClipFrames(clip);
+  }
+
+  // ========= Chain links (unified transitions) =========
+  // A link sits on a temporal boundary and affects how the clip to its RIGHT enters.
+  //   'in-0'      -> entrance of the first clip (uses clip.transitions.inType/inDur)
+  //   'cross-i'   -> overlap between clip i and clip i+1 (uses clip[i].crossTransition)
+  //                  This IS the entrance transition of clip i+1 (no separate 'in' for clip i+1).
+  // The OUT transition of the last clip is handled separately via the last clip's transitions.outType.
+  // Build the list of transition links. Each link occupies its OWN non-overlapping
+  // time strip on the timeline. The `clip` is the outgoing (background) frame source
+  // and `nextClip` is the incoming (revealed) frame source.
+  function linkList() {
+    const links = [];
+    const n = state.clips.length;
+    if (n === 0) return links;
+    let t = 0;
+    const push = (link) => {
+      const v = getLinkValues(link);
+      link.duration = v.duration || 0;
+      link.isOn = v.type !== 'none' && link.duration > 0;
+      links.push(link);
+    };
+    // Entrance strip BEFORE clip 0 (always present, even if inactive)
+    push({
+      id: 'in-0', kind: 'in', clipIdx: 0,
+      clip: state.clips[0], nextClip: state.clips[0],
+      start: 0,
+      affects: 'Entrada del clip "' + state.clips[0].name + '"'
+    });
+    t = linkDuration(state.clips[0], 'in', 0);
+    for (let i = 0; i < n; i++) {
+      t += clipDuration(state.clips[i]);
+      if (i < n - 1) {
+        const a = state.clips[i], b = state.clips[i + 1];
+        push({
+          id: 'cross-' + i, kind: 'cross', clipIdx: i,
+          clip: a, nextClip: b,
+          start: t, overlap: linkDuration(a, 'cross', i),
+          affects: 'Transición entre "' + a.name + '" → "' + b.name + '"'
+        });
+        t += linkDuration(a, 'cross', i);
+      }
+    }
+    // Exit strip AFTER the last clip (always present)
+    const li = n - 1;
+    push({
+      id: 'out-' + li, kind: 'out', clipIdx: li,
+      clip: state.clips[li], nextClip: null,
+      start: t,
+      affects: 'Salida del último clip "' + state.clips[li].name + '"'
+    });
+    return links;
+  }
+  function getLink(id) { return linkList().find(l => l.id === id) || null; }
+  // Read current type/duration for a link
+  function getLinkValues(link) {
+    if (link.kind === 'in') {
+      return { type: link.clip.transitions.inType, duration: link.clip.transitions.inDur };
+    }
+    if (link.kind === 'out') {
+      return { type: link.clip.transitions.outType, duration: link.clip.transitions.outDur };
+    }
+    return { type: link.clip.crossTransition.type, duration: link.clip.crossTransition.duration };
+  }
+  // Write type/duration for a link
+  function setLinkValues(link, type, duration) {
+    if (link.kind === 'in') {
+      link.clip.transitions.inType = type;
+      link.clip.transitions.inDur = type === 'none' ? 0 : Math.max(0.1, duration);
+    } else if (link.kind === 'out') {
+      link.clip.transitions.outType = type;
+      link.clip.transitions.outDur = type === 'none' ? 0 : Math.max(0.1, duration);
+    } else {
+      link.clip.crossTransition.type = type;
+      link.clip.crossTransition.duration = type === 'none' ? 0 : Math.max(0, duration);
+    }
+  }
+  function selectLink(id) {
+    state.selectedLinkId = id;
+    // Also select the clip that owns the data, so other panels stay coherent
+    if (id) {
+      const link = getLink(id);
+      if (link) state.selectedClipId = link.clip.id;
+    }
+    syncLinkPanel();
+    renderTimeline();
+  }
+
+  // ========= Source loading (multi-source) =========
+  $('btnImport').addEventListener('click', () => $('fileInput').click());
+  $('dropzone').addEventListener('click', () => $('fileInput').click());
+  $('fileInput').addEventListener('change', (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(f => loadVideo(f));
+    e.target.value = '';
+  });
+  ['dragenter','dragover'].forEach(ev => $('dropzone').addEventListener(ev, (e) => { e.preventDefault(); $('dropzone').classList.add('drag'); }));
+  ['dragleave','drop'].forEach(ev => $('dropzone').addEventListener(ev, (e) => { e.preventDefault(); $('dropzone').classList.remove('drag'); }));
+  $('dropzone').addEventListener('drop', (e) => {
+    const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('video/'));
+    files.forEach(f => loadVideo(f));
+  });
+
+  function loadVideo(file) {
+    if (!file.type.startsWith('video/')) { toast('El archivo no es un video válido', 'error'); return; }
+    const url = URL.createObjectURL(file);
+    const video = document.createElement('video');
+    video.src = url;
+    video.crossOrigin = 'anonymous';
+    video.muted = false;
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.addEventListener('loadedmetadata', () => {
+      const sourceId = newSourceId();
+      const src = { id: sourceId, url, el: video, duration: video.duration, width: video.videoWidth, height: video.videoHeight, fileName: file.name, fileSize: file.size, fileLastModified: file.lastModified };
+      state.sources.push(src);
+      invalidateAllThumbs();
+      // If first source, set up canvas
+      if (state.sources.length === 1) {
+        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+        canvas.classList.remove('hidden');
+        applyCanvasAspect();
+        $('dropzone').classList.add('hidden');
+        $('overlayTop').classList.remove('hidden');
+      }
+      $('resBadge').textContent = `${video.videoWidth}×${video.videoHeight}`;
+      // Create a new clip covering the whole source and append to end of timeline
+      const clip = {
+        id: newClipId(),
+        sourceId,
+        name: `${file.name.replace(/\.[^.]+$/, '').slice(0,18)} ${state.clips.length + 1}`,
+        sourceStart: 0,
+        sourceEnd: video.duration,
+        ...defaultClipSettings()
+      };
+      state.clips.push(clip);
+      state.selectedClipId = clip.id;
+      state.selectedSourceId = sourceId;
+      // If first source, reset time
+      if (state.clips.length === 1) state.currentTime = 0;
+      // Capture first/last frames for transition strips (async)
+      captureClipFrames(clip);
+      enableControls();
+      syncPanelFromClip();
+      renderTimeline();
+      drawFrame();
+      toast(`Video añadido como clip ${state.clips.length} (${fmtTime(video.duration)})`, 'ok');
+      // Hint: if there's an autosave from a previous session, let the user know they can recover it.
+      if (state.sources.length === 1 && hasAutosave()) {
+        setTimeout(() => toast('♻ Tienes un proyecto autoguardado — pulsa Recuperar para restaurarlo', ''), 1200);
+        refreshRecoverButton();
+      }
+    });
+    video.addEventListener('error', () => { toast('No se pudo cargar el video. Prueba con otro formato.', 'error'); });
+    video.load();
+  }
+
+  function enableControls() {
+    if (state.sources.length === 0) return;
+    ['btnPlay','btnStop','btnPrev','btnNext','btnMute','btnExport','speedSel',
+     'btnSplit','btnCopy','btnCut','btnPaste','btnDuplicate','btnDelete',
+     'btnSave','btnLoad'].forEach(id => { const el = $(id); if (el) el.disabled = false; });
+  }
+
+  // ========= Timeline rendering with zoom =========
+  // px per second of total timeline
+  function pxPerSecond() {
+    const trackW = $('tlScroll').clientWidth || 600;
+    const total = totalDuration();
+    if (total <= 0) return trackW;
+    return (trackW / total) * state.zoom;
+  }
+
+  function renderTimeline() {
+    const track = $('tlTrack');
+    const ruler = $('tlRuler');
+    const inner = $('tlInner');
+    track.querySelectorAll('.clip, .tl-playhead, .clip-cross, .chain-strip, .chain-marker').forEach(n => n.remove());
+    $('tlEmpty').style.display = state.clips.length ? 'none' : 'grid';
+    const total = totalDuration();
+    $('durTime').textContent = fmtTime(total);
+    $('footTotal').textContent = fmtTime(total);
+    if (state.sources.length === 0 || state.clips.length === 0) {
+      renderRuler(1); inner.style.width = '100%'; return;
+    }
+    const pps = pxPerSecond();
+    const innerW = Math.max($('tlScroll').clientWidth, total * pps + 40);
+    inner.style.width = innerW + 'px';
+    renderRuler(Math.max(1, total));
+
+    state.clips.forEach((c, idx) => {
+      const dur = clipDuration(c);
+      const leftPx = clipStartTime(idx) * pps;
+      const widthPx = Math.max(20, dur * pps);
+      const src = getSource(c.sourceId);
+      const el = document.createElement('div');
+      el.className = 'clip' + (c.id === state.selectedClipId ? ' selected' : '');
+      el.style.left = leftPx + 'px';
+      el.style.width = widthPx + 'px';
+      el.style.background = CLIP_COLORS[idx % CLIP_COLORS.length];
+      el.dataset.id = c.id;
+      el.draggable = false;
+      el.innerHTML = `
+        <div class="clip-thumbs" data-thumbs-for="${c.id}"><div class="thumb-empty"></div></div>
+        <div class="clip-drag-handle" title="Arrastra para reordenar">⠿</div>
+        <div class="clip-name">${escapeHtml(c.name)}</div>
+        <div class="clip-meta">${fmtTime(dur)} · ${c.speed}×${src ? ' · ' + escapeHtml(src.fileName.slice(0,12)) : ''}</div>
+        <div class="clip-resize left" data-side="left"></div>
+        <div class="clip-resize right" data-side="right"></div>
+        <div class="clip-textbar" data-clip="${c.id}"></div>
+      `;
+      el.addEventListener('click', (e) => {
+        if (e.target.classList.contains('clip-resize') || e.target.classList.contains('clip-drag-handle') || e.target.classList.contains('clip-textbar') || e.target.classList.contains('textbar-handle') || e.target.classList.contains('textbar-label') || e.target.classList.contains('chain-strip') || e.target.classList.contains('chain-strip-glyph') || e.target.classList.contains('chain-strip-kind') || e.target.classList.contains('chain-strip-dur') || e.target.classList.contains('chain-marker') || e.target.classList.contains('chain-marker-glyph') || e.target.classList.contains('chain-marker-kind') || e.target.classList.contains('clip-stickerbar') || e.target.classList.contains('stickerbar-handle') || e.target.classList.contains('stickerbar-label')) return;
+        selectClip(c.id);
+      });
+      track.appendChild(el);
+      populateClipThumbs(c, el);
+
+      el.querySelectorAll('.clip-resize').forEach(h => {
+        h.addEventListener('pointerdown', (e) => startResizeClip(e, c.id, h.dataset.side));
+      });
+
+      const handle = el.querySelector('.clip-drag-handle');
+      handle.addEventListener('pointerdown', (e) => startClipDrag(e, c.id));
+
+      // Text bar: shows where the text overlay appears in this clip
+      renderClipTextBar(el, c, pps, dur);
+
+      // Sticker bars: one per sticker, stacked vertically
+      renderClipStickerBars(el, c, pps, dur);
+    });
+
+    // Chain links: draw a link icon at the start of clip 0 and between every pair of clips.
+    // Each link affects the entrance of the clip to its RIGHT.
+    renderChainLinks(track, pps);
+
+    const ph = document.createElement('div');
+    ph.className = 'tl-playhead';
+    ph.style.left = (state.currentTime * pps) + 'px';
+    track.appendChild(ph);
+
+    const sel = getSelectedClip();
+    if (sel) {
+      $('footClip').textContent = sel.name;
+      $('footStart').textContent = fmtTime(sel.sourceStart);
+      $('footEnd').textContent = fmtTime(sel.sourceEnd);
+    } else {
+      $('footClip').textContent = '—';
+      $('footStart').textContent = '0:00';
+      $('footEnd').textContent = '0:00';
+    }
+    updatePlayheadScroll();
+  }
+
+  // Render the text overlay's time window as a draggable bar inside a clip.
+  function renderClipTextBar(clipEl, clip, pps, dur) {
+    const bar = clipEl.querySelector('.clip-textbar');
+    if (!bar) return;
+    bar.innerHTML = '';
+    if (!clip.text.content) { bar.style.display = 'none'; return; }
+    bar.style.display = 'block';
+    const start = clip.text.start || 0;
+    // duration === 0 means "whole clip"
+    const duration = (clip.text.duration && clip.text.duration > 0) ? clip.text.duration : (dur - start);
+    const end = Math.min(dur, start + duration);
+    const leftPct = (start / dur) * 100;
+    const widthPct = Math.max(2, ((end - start) / dur) * 100);
+    bar.style.left = leftPct + '%';
+    bar.style.width = widthPct + '%';
+    bar.title = `Texto: ${clip.text.content.slice(0,30)} · ${start.toFixed(1)}s → ${end.toFixed(1)}s`;
+    const label = document.createElement('span');
+    label.className = 'textbar-label';
+    label.textContent = 'T ' + clip.text.content.slice(0, 20);
+    bar.appendChild(label);
+    // Drag handle for the body (move whole bar)
+    bar.addEventListener('pointerdown', (e) => {
+      if (e.target.classList.contains('textbar-handle')) return;
+      e.stopPropagation();
+      startTextBarDrag(e, clip, 'move');
+    });
+    // Left resize handle
+    const lh = document.createElement('div');
+    lh.className = 'textbar-handle textbar-left';
+    lh.addEventListener('pointerdown', (e) => { e.stopPropagation(); startTextBarDrag(e, clip, 'left'); });
+    bar.appendChild(lh);
+    // Right resize handle
+    const rh = document.createElement('div');
+    rh.className = 'textbar-handle textbar-right';
+    rh.addEventListener('pointerdown', (e) => { e.stopPropagation(); startTextBarDrag(e, clip, 'right'); });
+    bar.appendChild(rh);
+  }
+
+  // Drag the text bar to change start/duration.
+  function startTextBarDrag(e, clip, mode) {
+    e.preventDefault();
+    const pps = pxPerSecond();
+    const startX = e.clientX;
+    const initStart = clip.text.start || 0;
+    const initDur = (clip.text.duration && clip.text.duration > 0) ? clip.text.duration : (clipDuration(clip) - initStart);
+    const cd = clipDuration(clip);
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / pps;
+      if (mode === 'move') {
+        let ns = Math.max(0, Math.min(cd - 0.3, initStart + dx));
+        clip.text.start = ns;
+        if (clip.text.duration > 0) {
+          // keep duration, but clamp
+          const maxD = cd - ns;
+          if (clip.text.duration > maxD) clip.text.duration = maxD;
+        }
+      } else if (mode === 'left') {
+        let ns = Math.max(0, Math.min(initStart + initDur - 0.2, initStart + dx));
+        clip.text.start = ns;
+        if (clip.text.duration > 0) clip.text.duration = Math.max(0.2, initStart + initDur - ns);
+      } else if (mode === 'right') {
+        let nd = Math.max(0.2, Math.min(cd - initStart, initDur + dx));
+        clip.text.duration = nd;
+      }
+      syncPanelFromClip();
+      renderTimeline();
+      drawFrame();
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
+  // Render one draggable bar per sticker, stacked above the text bar.
+  function renderClipStickerBars(clipEl, clip, pps, dur) {
+    // Remove previous sticker bars
+    clipEl.querySelectorAll('.clip-stickerbar').forEach(n => n.remove());
+    if (!clip.stickers || !clip.stickers.length) return;
+    clip.stickers.forEach((s, idx) => {
+      const start = s.start || 0;
+      // duration === 0 means "whole clip"
+      const duration = (s.duration && s.duration > 0) ? s.duration : (dur - start);
+      const end = Math.min(dur, start + duration);
+      const leftPct = (start / dur) * 100;
+      const widthPct = Math.max(2, ((end - start) / dur) * 100);
+      const bar = document.createElement('div');
+      bar.className = 'clip-stickerbar' + (idx === state.selectedStickerIdx ? ' selected' : '');
+      bar.style.left = leftPct + '%';
+      bar.style.width = widthPct + '%';
+      bar.style.bottom = (18 + idx * 12) + 'px'; // stack above the 14px text bar
+      bar.dataset.idx = idx;
+      bar.title = `${s.emoji} · ${start.toFixed(1)}s → ${end.toFixed(1)}s`;
+      const label = document.createElement('span');
+      label.className = 'stickerbar-label';
+      label.textContent = s.emoji;
+      bar.appendChild(label);
+      // Body drag = move
+      bar.addEventListener('pointerdown', (e) => {
+        if (e.target.classList.contains('stickerbar-handle')) return;
+        e.stopPropagation();
+        state.selectedStickerIdx = idx;
+        startStickerBarDrag(e, clip, idx, 'move');
+      });
+      // Left resize handle
+      const lh = document.createElement('div');
+      lh.className = 'stickerbar-handle stickerbar-left';
+      lh.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        state.selectedStickerIdx = idx;
+        startStickerBarDrag(e, clip, idx, 'left');
+      });
+      bar.appendChild(lh);
+      // Right resize handle
+      const rh = document.createElement('div');
+      rh.className = 'stickerbar-handle stickerbar-right';
+      rh.addEventListener('pointerdown', (e) => {
+        e.stopPropagation();
+        state.selectedStickerIdx = idx;
+        startStickerBarDrag(e, clip, idx, 'right');
+      });
+      bar.appendChild(rh);
+      clipEl.appendChild(bar);
+    });
+  }
+
+  // Drag a sticker's time window to change start/duration.
+  function startStickerBarDrag(e, clip, idx, mode) {
+    e.preventDefault();
+    const pps = pxPerSecond();
+    const startX = e.clientX;
+    const s = clip.stickers[idx];
+    const initStart = s.start || 0;
+    const initDur = (s.duration && s.duration > 0) ? s.duration : (clipDuration(clip) - initStart);
+    const cd = clipDuration(clip);
+    const onMove = (ev) => {
+      const dx = (ev.clientX - startX) / pps;
+      if (mode === 'move') {
+        let ns = Math.max(0, Math.min(cd - 0.3, initStart + dx));
+        s.start = ns;
+        if (s.duration > 0) {
+          const maxD = cd - ns;
+          if (s.duration > maxD) s.duration = maxD;
+        }
+      } else if (mode === 'left') {
+        let ns = Math.max(0, Math.min(initStart + initDur - 0.2, initStart + dx));
+        s.start = ns;
+        if (s.duration > 0) s.duration = Math.max(0.2, initStart + initDur - ns);
+      } else if (mode === 'right') {
+        let nd = Math.max(0.2, Math.min(cd - initStart, initDur + dx));
+        s.duration = nd;
+      }
+      syncStickerEdit();
+      renderTimeline();
+      drawFrame();
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
+
+  // Render transition markers/strips on the timeline.
+  //  - Active link (type != 'none', duration > 0): a strip whose width == duration.
+  //  - Inactive link (corte seco): a small vertical marker at the boundary, clickable.
+  function renderChainLinks(track, pps) {
+    const links = linkList();
+    links.forEach(link => {
+      const v = getLinkValues(link);
+      const isSel = state.selectedLinkId === link.id;
+      const isOn = v.type !== 'none' && v.duration > 0;
+      const el = document.createElement('div');
+      el.className = (isOn ? 'chain-strip' : 'chain-marker') + (isSel ? ' selected' : '') + (isOn ? ' active' : '') + ' kind-' + link.kind;
+      el.dataset.linkId = link.id;
+      if (isOn) {
+        // Active: a strip with width = duration
+        const widthPx = Math.max(8, link.duration * pps);
+        // Position: strips sit at their `start`. For 'in', that's 0; for 'cross'/'out', at the boundary.
+        const leftPx = link.start * pps;
+        el.style.left = leftPx + 'px';
+        el.style.width = widthPx + 'px';
+      } else {
+        // Inactive: a small vertical marker centered on the boundary.
+        // - 'in' marker sits at the very start (left edge of clip 0's region in the strip area)
+        // - 'cross'/'out' markers sit at the boundary between two clips (use overlap == 0 -> at link.start)
+        const leftPx = link.start * pps;
+        el.style.left = leftPx + 'px';
+        el.style.width = '14px';
+        el.style.transform = 'translateX(-50%)';
+      }
+      el.title = link.kind === 'in'
+        ? `Entrada (clip "${link.clip.name}") · ${v.type === 'none' ? 'corte seco' : v.type + ' ' + v.duration.toFixed(1) + 's'}`
+        : link.kind === 'out'
+        ? `Salida (clip "${link.clip.name}") · ${v.type === 'none' ? 'corte seco' : v.type + ' ' + v.duration.toFixed(1) + 's'}`
+        : `Entre "${link.clip.name}" → "${link.nextClip.name}" · ${v.type === 'none' ? 'corte seco' : v.type + ' ' + v.duration.toFixed(1) + 's'}`;
+      // Glyph + label
+      const glyph = document.createElement('span');
+      glyph.className = isOn ? 'chain-strip-glyph' : 'chain-marker-glyph';
+      glyph.textContent = '🔗';
+      el.appendChild(glyph);
+      const kindLabel = document.createElement('span');
+      kindLabel.className = isOn ? 'chain-strip-kind' : 'chain-marker-kind';
+      kindLabel.textContent = link.kind === 'in' ? 'IN' : (link.kind === 'out' ? 'OUT' : '⇆');
+      el.appendChild(kindLabel);
+      // Duration label (only if active and strip is wide enough)
+      if (isOn && (link.duration * pps) > 50) {
+        const durLabel = document.createElement('span');
+        durLabel.className = 'chain-strip-dur';
+        durLabel.textContent = v.duration.toFixed(1) + 's';
+        el.appendChild(durLabel);
+      }
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        selectLink(link.id);
+        const tab = document.querySelector('.tab[data-tab="transitions"]');
+        if (tab) tab.click();
+      });
+      track.appendChild(el);
+    });
+  }
+
+  function renderRuler(total) {
+    const ruler = $('tlRuler');
+    ruler.innerHTML = '';
+    let step = 1;
+    if (total > 60) step = 10;
+    if (total > 300) step = 30;
+    if (total > 900) step = 60;
+    const pps = pxPerSecond();
+    for (let t = 0; t <= total + step; t += step) {
+      const tick = document.createElement('span');
+      tick.style.position = 'absolute';
+      tick.style.left = (t * pps) + 'px';
+      tick.style.transform = 'translateX(-50%)';
+      tick.textContent = fmtTime(t);
+      ruler.appendChild(tick);
+    }
+  }
+
+  function updatePlayheadScroll() {
+    // Auto-scroll to keep playhead visible during playback
+    const scroll = $('tlScroll');
+    const pps = pxPerSecond();
+    const phX = state.currentTime * pps;
+    const viewLeft = scroll.scrollLeft;
+    const viewRight = viewLeft + scroll.clientWidth;
+    if (phX < viewLeft + 40) scroll.scrollLeft = Math.max(0, phX - 40);
+    else if (phX > viewRight - 40) scroll.scrollLeft = phX - scroll.clientWidth + 40;
+  }
+
+  // ========= Drag to reorder clips =========
+  let dragData = null;
+  function startClipDrag(e, clipId) {
+    e.preventDefault();
+    e.stopPropagation();
+    const clipEl = e.target.closest('.clip');
+    if (!clipEl) return;
+    clipEl.classList.add('dragging');
+    dragData = { clipId, startX: e.clientX };
+    document.addEventListener('pointermove', onClipDragMove);
+    document.addEventListener('pointerup', onClipDragEnd);
+  }
+  function onClipDragMove(e) {
+    if (!dragData) return;
+    const clips = $('tlTrack').querySelectorAll('.clip');
+    clips.forEach(el => {
+      if (el.classList.contains('dragging')) return;
+      const rect = el.getBoundingClientRect();
+      const mid = rect.left + rect.width / 2;
+      el.classList.toggle('drop-target', e.clientX < mid);
+    });
+  }
+  function onClipDragEnd(e) {
+    if (!dragData) return;
+    const { clipId } = dragData;
+    const fromIdx = state.clips.findIndex(c => c.id === clipId);
+    if (fromIdx < 0) { cleanup(); return; }
+    let toIdx = state.clips.length;
+    const clips = $('tlTrack').querySelectorAll('.clip');
+    clips.forEach((el) => {
+      if (el.classList.contains('dragging')) return;
+      const rect = el.getBoundingClientRect();
+      const mid = rect.left + rect.width / 2;
+      if (e.clientX < mid) {
+        const realIdx = state.clips.findIndex(c => c.id === el.dataset.id);
+        if (realIdx < toIdx) toIdx = realIdx;
+      }
+    });
+    const movedClip = state.clips[fromIdx];
+    state.clips.splice(fromIdx, 1);
+    if (toIdx > fromIdx) toIdx--;
+    state.clips.splice(toIdx, 0, movedClip);
+    cleanup();
+    renderTimeline();
+    drawFrame();
+    toast('Clip reordenado', 'ok');
+    function cleanup() {
+      $('tlTrack').querySelectorAll('.clip').forEach(el => { el.classList.remove('dragging'); el.classList.remove('drop-target'); });
+      document.removeEventListener('pointermove', onClipDragMove);
+      document.removeEventListener('pointerup', onClipDragEnd);
+      dragData = null;
+    }
+  }
+
+  // ========= Selection & seeking =========
+  function selectClip(id) {
+    state.selectedClipId = id;
+    state.selectedStickerIdx = -1;
+    const c = getSelectedClip();
+    if (c) state.selectedSourceId = c.sourceId;
+    syncPanelFromClip();
+    if (!state.isPlaying) {
+      const c2 = getSelectedClip();
+      if (c2) {
+        const idx = state.clips.findIndex(x => x.id === id);
+        state.currentTime = clipStartTime(idx);
+        seekSourceToCurrent();
+      }
+      drawFrame(); updateTransport();
+    }
+    renderTimeline();
+    updateHintName();
+  }
+  function updateHintName() { const c = getSelectedClip(); $('hintClipName').textContent = c ? c.name : 'seleccionado'; }
+
+  $('tlTrack').addEventListener('click', (e) => {
+    if (state.sources.length === 0) return;
+    if (e.target.classList.contains('clip-resize') || e.target.classList.contains('clip') || e.target.classList.contains('clip-drag-handle') || e.target.classList.contains('clip-thumbs') || e.target.classList.contains('clip-textbar') || e.target.classList.contains('textbar-handle') || e.target.classList.contains('textbar-label') || e.target.classList.contains('chain-strip') || e.target.classList.contains('chain-strip-glyph') || e.target.classList.contains('chain-strip-kind') || e.target.classList.contains('chain-strip-dur') || e.target.classList.contains('chain-marker') || e.target.classList.contains('chain-marker-glyph') || e.target.classList.contains('chain-marker-kind') || e.target.classList.contains('clip-stickerbar') || e.target.classList.contains('stickerbar-handle') || e.target.classList.contains('stickerbar-label')) return;
+    const rect = $('tlTrack').getBoundingClientRect();
+    const pps = pxPerSecond();
+    const x = e.clientX - rect.left;
+    state.currentTime = Math.max(0, Math.min(totalDuration(), x / pps));
+    seekSourceToCurrent();
+    drawFrame(); updateTransport(); renderTimeline();
+  });
+
+  function seekSourceToCurrent() {
+    if (state.sources.length === 0) return;
+    const info = clipAtTime(state.currentTime);
+    if (!info) return;
+    if (info.kind === 'trans') {
+      // During a transition strip: pause all video sources; captured frames are used.
+      state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); });
+      captureClipFrames(info.outClip);
+      if (info.inClip) captureClipFrames(info.inClip);
+      state.activeClipId = info.outClip.id;
+      return;
+    }
+    // Inside a clip: seek its source to the right time
+    const src = getSource(info.clip.sourceId);
+    if (src) {
+      try { src.el.currentTime = Math.max(0, info.clip.sourceStart + info.offset * info.clip.speed); } catch (e) {}
+    }
+    state.activeClipId = info.clip.id;
+    // Pause all sources not involved
+    const activeIds = new Set([info.clip.sourceId]);
+    state.sources.forEach(s => { if (!activeIds.has(s.id) && !s.el.paused) s.el.pause(); });
+  }
+  // Returns the active item at time t:
+  //   { kind:'clip', clip, offset, indexStart }           -> inside a clip
+  //   { kind:'trans', link, progress, outClip, inClip }  -> inside a transition strip
+  function clipAtTime(t) {
+    if (state.clips.length === 0) return null;
+    const links = linkList();
+    // Build an ordered list of segments (strips + clips) by walking the timeline.
+    let acc = 0;
+    // Entrance strip
+    const inDur = linkDuration(state.clips[0], 'in', 0);
+    if (t < inDur && inDur > 0) {
+      const link = links.find(l => l.id === 'in-0');
+      return { kind: 'trans', link, progress: t / inDur, outClip: state.clips[0], inClip: state.clips[0] };
+    }
+    acc = inDur;
+    for (let i = 0; i < state.clips.length; i++) {
+      const c = state.clips[i];
+      const d = clipDuration(c);
+      // Inside clip i? (Do NOT force-match the last clip here: a trailing 'out' strip may
+      // follow it, and the dedicated exit-strip block below handles t beyond the last clip.)
+      if (t < acc + d) {
+        return { kind: 'clip', clip: c, offset: Math.max(0, t - acc), indexStart: acc };
+      }
+      acc += d;
+      // Inside the cross strip between clip i and i+1?
+      if (i < state.clips.length - 1) {
+        const ov = linkDuration(c, 'cross', i);
+        if (ov > 0) {
+          if (t < acc + ov) {
+            const link = links.find(l => l.id === 'cross-' + i);
+            const p = Math.max(0, Math.min(1, (t - acc) / ov));
+            return { kind: 'trans', link, progress: p, outClip: c, inClip: state.clips[i + 1] };
+          }
+          acc += ov;
+        }
+      }
+    }
+    // Inside the exit strip (after last clip)?
+    const lastIdx = state.clips.length - 1;
+    const outDur = linkDuration(state.clips[lastIdx], 'out', lastIdx);
+    if (outDur > 0 && t >= acc) {
+      const link = links.find(l => l.id === 'out-' + lastIdx);
+      const p = Math.max(0, Math.min(1, (t - acc) / outDur));
+      return { kind: 'trans', link, progress: p, outClip: state.clips[lastIdx], inClip: null };
+    }
+    // Fallback: last clip
+    const last = state.clips[lastIdx];
+    return { kind: 'clip', clip: last, offset: clipDuration(last), indexStart: clipStartTime(lastIdx) };
+  }
+
+  // ========= Clip editing =========
+  $('btnSplit').addEventListener('click', splitAtPlayhead);
+  $('btnCopy').addEventListener('click', copySelected);
+  $('btnCut').addEventListener('click', cutSelected);
+  $('btnPaste').addEventListener('click', pasteClip);
+  $('btnDuplicate').addEventListener('click', duplicateSelected);
+  $('btnDelete').addEventListener('click', deleteSelected);
+
+  function splitAtPlayhead() {
+    if (state.sources.length === 0) return;
+    const info = clipAtTime(state.currentTime);
+    if (!info || info.kind !== 'clip') { toast('Sitúa el cursor sobre un clip (no sobre una transición) para dividir', 'error'); return; }
+    const { clip, offset } = info;
+    const src = getSource(clip.sourceId);
+    if (!src) return;
+    const splitSourceTime = clip.sourceStart + offset * clip.speed;
+    if (splitSourceTime - clip.sourceStart < 0.2 || clip.sourceEnd - splitSourceTime < 0.2) {
+      toast('Mueve el cursor al centro del clip para dividir', 'error'); return;
+    }
+    const idx = state.clips.indexOf(clip);
+    const left = deepCopyClip(clip); left.id = newClipId(); left.name = clip.name + ' A'; left.sourceEnd = splitSourceTime;
+    const right = deepCopyClip(clip); right.id = newClipId(); right.name = clip.name + ' B'; right.sourceStart = splitSourceTime;
+    // Transition ownership after a split. Timeline becomes [.., LEFT, RIGHT, <next clip> ..]:
+    //  - LEFT keeps the entrance transition (transitions.in) of the original clip.
+    //  - The crossfade into the NEXT real clip belongs to whichever half is now adjacent
+    //    to that next clip = the RIGHT half. So RIGHT keeps crossTransition.
+    //  - LEFT must NOT crossfade into RIGHT (a split is a hard cut), so LEFT.crossTransition
+    //    is cleared. RIGHT loses its entrance transition (it starts mid-clip).
+    //  - RIGHT keeps the exit transition (transitions.out) since it still ends at the
+    //    original source end.
+    left.transitions = { ...left.transitions, outType: 'none', outDur: 0 };
+    left.crossTransition = { type: 'none', duration: 0 };
+    right.transitions = { ...right.transitions, inType: 'none', inDur: 0 };
+    // The right half's local timeline starts at t=0 (= the split point in source time), so
+    // any text/sticker window whose start was measured from the original clip's start must
+    // be shifted by -offset and re-clamped to the new (shorter) clip duration.
+    const rightDur = clipDuration(right);
+    if (right.text) {
+      const ns = Math.max(0, (right.text.start || 0) - offset);
+      right.text.start = Math.min(ns, rightDur);
+      if (right.text.duration > 0) right.text.duration = Math.max(0, Math.min(right.text.duration, rightDur - right.text.start));
+    }
+    if (Array.isArray(right.stickers)) {
+      // Drop stickers whose window is entirely before the split point (they belong to LEFT),
+      // then shift the surviving ones by -offset and re-clamp to the right half's duration.
+      right.stickers = right.stickers.filter(s => (s.start || 0) + (s.duration || 0) > offset + 0.001);
+      right.stickers.forEach(s => {
+        const ns = Math.max(0, (s.start || 0) - offset);
+        s.start = Math.min(ns, rightDur);
+        if (s.duration > 0) s.duration = Math.max(0, Math.min(s.duration, rightDur - s.start));
+      });
+    }
+    state.clips.splice(idx, 1, left, right);
+    state.selectedClipId = left.id;
+    // Capture the boundary frames: the LAST frame of A and the FIRST frame of B must
+    // both be the EXACT same frame at the cut point (splitSourceTime), so that a
+    // crossfade between them shows the precise image where the split happened.
+    captureClipFrameAt(left, 'last', splitSourceTime);
+    captureClipFrameAt(right, 'first', splitSourceTime);
+    syncPanelFromClip(); renderTimeline(); drawFrame();
+    toast('Clip dividido', 'ok');
+  }
+  function copySelected() {
+    const c = getSelectedClip(); if (!c) return;
+    state.clipboard = deepCopyClip(c); state.clipboard.id = null;
+    $('btnPaste').disabled = false;
+    toast('Clip copiado al portapapeles', 'ok');
+  }
+  function cutSelected() {
+    const c = getSelectedClip(); if (!c) return;
+    if (state.clips.length <= 1) { toast('No puedes cortar el único clip', 'error'); return; }
+    state.clipboard = deepCopyClip(c); state.clipboard.id = null;
+    deleteClipById(c.id);
+    $('btnPaste').disabled = false;
+    toast('Clip cortado', 'ok');
+  }
+  function pasteClip() {
+    if (!state.clipboard) { toast('No hay nada en el portapapeles', 'error'); return; }
+    const sel = getSelectedClip();
+    const newClip = deepCopyClip(state.clipboard);
+    newClip.id = newClipId();
+    newClip.name = state.clipboard.name + ' (copia)';
+    let idx = sel ? state.clips.indexOf(sel) + 1 : state.clips.length;
+    state.clips.splice(idx, 0, newClip);
+    state.selectedClipId = newClip.id;
+    captureClipFrames(newClip);
+    syncPanelFromClip(); renderTimeline(); drawFrame();
+    toast('Clip pegado', 'ok');
+  }
+  function duplicateSelected() {
+    const c = getSelectedClip(); if (!c) return;
+    const idx = state.clips.indexOf(c);
+    const newClip = deepCopyClip(c); newClip.id = newClipId(); newClip.name = c.name + ' (duplicado)';
+    state.clips.splice(idx + 1, 0, newClip);
+    state.selectedClipId = newClip.id;
+    captureClipFrames(newClip);
+    syncPanelFromClip(); renderTimeline(); drawFrame();
+    toast('Clip duplicado', 'ok');
+  }
+  function deleteSelected() {
+    const c = getSelectedClip(); if (!c) return;
+    if (state.clips.length <= 1) { toast('No puedes eliminar el único clip', 'error'); return; }
+    deleteClipById(c.id);
+    toast('Clip eliminado', 'ok');
+  }
+  function deleteClipById(id) {
+    const idx = state.clips.findIndex(c => c.id === id);
+    if (idx < 0) return;
+    // Clean up caches for the deleted clip so memory doesn't grow unboundedly across a
+    // long editing session (IDs are monotonic, so without this the Maps leak forever).
+    state.thumbCache.delete(id);
+    state.frameCache.delete(id);
+    if (state.thumbBusy) state.thumbBusy.delete(id);
+    state.clips.splice(idx, 1);
+    const newSel = state.clips[Math.min(idx, state.clips.length - 1)];
+    state.selectedClipId = newSel ? newSel.id : null;
+    // linkList() generates link IDs by clip INDEX (in-0, cross-i, out-<last>), so after a
+    // delete the previously-selected link id (e.g. "cross-2") now refers to a DIFFERENT
+    // clip pair. Clear it (and activeClipId, which pointed to the deleted clip) so the
+    // editor doesn't silently render/edit the wrong transition.
+    state.selectedLinkId = null;
+    state.activeClipId = null;
+    state.selectedStickerIdx = -1;
+    const total = totalDuration();
+    if (state.currentTime > total) state.currentTime = Math.max(0, total - 0.01);
+    seekSourceToCurrent();
+    syncPanelFromClip(); renderTimeline(); drawFrame();
+  }
+  function deepCopyClip(c) { return JSON.parse(JSON.stringify(c)); }
+
+  // Resize handles
+  let resizeData = null;
+  function startResizeClip(e, clipId, side) {
+    e.preventDefault(); e.stopPropagation();
+    const clip = state.clips.find(c => c.id === clipId);
+    if (!clip) return;
+    resizeData = { clipId, side, startX: e.clientX, startStart: clip.sourceStart, startEnd: clip.sourceEnd };
+    document.addEventListener('pointermove', onResizeMove);
+    document.addEventListener('pointerup', onResizeEnd);
+  }
+  function onResizeMove(e) {
+    if (!resizeData) return;
+    const { clipId, side, startX, startStart, startEnd } = resizeData;
+    const clip = state.clips.find(c => c.id === clipId);
+    if (!clip) return;
+    const src = getSource(clip.sourceId);
+    if (!src) return;
+    const pps = pxPerSecond();
+    const deltaSec = ((e.clientX - startX) / pps) * clip.speed;
+    if (side === 'left') {
+      const newStart = Math.max(0, Math.min(startEnd - 0.2, startStart + deltaSec));
+      const clipIdx = state.clips.indexOf(clip);
+      const beforeStart = clipStartTime(clipIdx);
+      state.currentTime = beforeStart + (newStart - clip.sourceStart) / clip.speed;
+      clip.sourceStart = newStart;
+    } else {
+      const newEnd = Math.max(startStart + 0.2, Math.min(src.duration, startEnd + deltaSec));
+      clip.sourceEnd = newEnd;
+    }
+    renderTimeline(); seekSourceToCurrent(); drawFrame(); updateTransport(); syncPanelFromClip();
+  }
+  function onResizeEnd() {
+    const resizeDataClipId = resizeData ? resizeData.clipId : null;
+    resizeData = null;
+    document.removeEventListener('pointermove', onResizeMove);
+    document.removeEventListener('pointerup', onResizeEnd);
+    const clip = state.clips.find(c => c.id === resizeDataClipId);
+    if (clip) {
+      invalidateClipThumb(clip.id);
+      // Re-capture the boundary frames since sourceStart/sourceEnd changed
+      refreshClipFrames(clip);
+      const el = document.querySelector(`.clip[data-id="${clip.id}"]`); if (el) populateClipThumbs(clip, el);
+    }
+  }
+
+  // ========= Clip thumbnails =========
+  function thumbKeyFor(clip) {
+    const r = (n) => Math.round(n * 100) / 100;
+    return `${clip.sourceId}:${r(clip.sourceStart)}-${r(clip.sourceEnd)}-${r(clip.speed)}`;
+  }
+
+  function populateClipThumbs(clip, el) {
+    const container = el.querySelector('.clip-thumbs');
+    if (!container) return;
+    const src = getSource(clip.sourceId);
+    if (!src) return;
+    const key = thumbKeyFor(clip);
+    const cached = state.thumbCache.get(clip.id);
+    if (cached && cached.key === key && cached.thumbs.length) {
+      renderThumbsInto(container, cached.thumbs);
+      return;
+    }
+    container.classList.add('loading');
+    container.innerHTML = '<div class="thumb-empty"></div>';
+    if (state.thumbBusy.has(clip.id)) return;
+    state.thumbBusy.add(clip.id);
+    generateClipThumbs(clip, src).then(thumbs => {
+      state.thumbCache.set(clip.id, { key, thumbs });
+      state.thumbBusy.delete(clip.id);
+      const liveEl = document.querySelector(`.clip[data-id="${clip.id}"] .clip-thumbs`);
+      if (liveEl) {
+        liveEl.classList.remove('loading');
+        renderThumbsInto(liveEl, thumbs);
+      }
+    }).catch(() => { state.thumbBusy.delete(clip.id); });
+  }
+
+  function renderThumbsInto(container, thumbs) {
+    container.innerHTML = '';
+    thumbs.forEach(url => {
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = '';
+      img.loading = 'lazy';
+      container.appendChild(img);
+    });
+  }
+
+  function seekForThumb(video, t) {
+    return new Promise((resolve) => {
+      let done = false;
+      const onSeeked = () => {
+        if (done) return;
+        done = true;
+        video.removeEventListener('seeked', onSeeked);
+        requestAnimationFrame(() => resolve());
+      };
+      video.addEventListener('seeked', onSeeked);
+      try { video.currentTime = t; } catch (e) { onSeeked(); }
+      setTimeout(onSeeked, 600);
+    });
+  }
+
+  async function generateClipThumbs(clip, src) {
+    const start = clip.sourceStart;
+    const end = clip.sourceEnd;
+    const span = Math.max(0.1, end - start);
+    const count = Math.min(8, Math.max(2, Math.ceil(span / 1.2)));
+    const thumbs = [];
+    const video = src.el;
+    const wasPaused = video.paused;
+    const wasTime = video.currentTime;
+
+    const thumbCanvas = document.createElement('canvas');
+    const TW = 64, TH = Math.max(24, Math.round(TW * (src.height / src.width)));
+    thumbCanvas.width = TW; thumbCanvas.height = TH;
+    const tctx = thumbCanvas.getContext('2d');
+
+    try {
+      for (let i = 0; i < count; i++) {
+        const t = start + (i + 0.5) * (span / count);
+        await seekForThumb(video, t);
+        try {
+          tctx.drawImage(video, 0, 0, TW, TH);
+          thumbs.push(thumbCanvas.toDataURL('image/jpeg', 0.5));
+        } catch (e) {}
+      }
+    } finally {
+      try { video.currentTime = wasTime; } catch (e) {}
+      if (wasPaused && !video.paused) video.pause();
+    }
+    return thumbs;
+  }
+
+  function invalidateClipThumb(clipId) { state.thumbCache.delete(clipId); invalidateClipFrames(clipId); }
+  function invalidateAllThumbs() { state.thumbCache.clear(); state.frameCache.clear(); }
+
+  // ========= Drawing =========
+  function buildFilterString(f) {
+    return `brightness(${f.brightness}%) contrast(${f.contrast}%) saturate(${f.saturate}%) hue-rotate(${f.hue}deg) blur(${f.blur}px) grayscale(${f.grayscale}%) sepia(${f.sepia}%) invert(${f.invert}%)`;
+  }
+
+  function drawFrame() {
+    if (state.sources.length === 0) return;
+    const w = canvas.width, h = canvas.height;
+    let info;
+    if (state.isPlaying || state.exporting) {
+      info = clipAtTime(state.currentTime);
+    } else {
+      // In edit mode, show the selected clip or its transition strip if a link is selected.
+      const selLink = state.selectedLinkId ? getLink(state.selectedLinkId) : null;
+      if (selLink) {
+        // Render the middle of the selected transition strip as a preview.
+        info = { kind: 'trans', link: selLink, progress: 0.5, outClip: selLink.clip, inClip: selLink.nextClip };
+      } else {
+        const c = getSelectedClip() || state.clips[0];
+        if (!c) return;
+        const idx = state.clips.indexOf(c);
+        info = { kind: 'clip', clip: c, offset: 0, indexStart: clipStartTime(idx) };
+      }
+    }
+    if (!info) return;
+
+    // ---- Transition strip: render captured frames with the animated effect ----
+    if (info.kind === 'trans') {
+      const link = info.link;
+      const v = getLinkValues(link);
+      const type = v.type;
+      // Ensure frames are captured for the involved clips
+      captureClipFrames(link.clip);
+      if (link.nextClip) captureClipFrames(link.nextClip);
+      // When the link is inactive (corte seco, type==='none'), there is no transition
+      // strip to preview: show the clip that the link belongs to, played normally, so
+      // the user sees real footage instead of a half-transparent static frame.
+      if (type === 'none') {
+        const c = link.kind === 'out' ? link.clip : (link.nextClip || link.clip);
+        const src = getSource(c.sourceId);
+        if (src) {
+          state.activeClipId = c.id;
+          $('clipBadge').textContent = c.name + ' (corte seco)';
+          if (canvas.width !== src.width || canvas.height !== src.height) {
+            canvas.width = src.width; canvas.height = src.height;
+            applyCanvasAspect();
+          }
+          drawClip(c, src);
+          drawTextOverlay(c.text, 0, clipDuration(c));
+          drawStickers(c.stickers, 0, clipDuration(c));
+        }
+        return;
+      }
+      const outEntry = state.frameCache.get(link.clip.id);
+      const inEntry = link.nextClip ? state.frameCache.get(link.nextClip.id) : null;
+      // For 'in' (entrance) the relevant frame is the clip's FIRST frame (the one being
+      // revealed); for 'out' (exit) it's the LAST frame; for 'cross' the outgoing clip's
+      // LAST frame is the background. Picking the right one avoids showing the wrong end
+      // of the clip during an in/out wipe.
+      const outCanvas = outEntry ? (link.kind === 'in' ? outEntry.first : outEntry.last) : null;
+      const inCanvas = (inEntry && link.nextClip) ? inEntry.first : null;
+      // Resize canvas to the outgoing clip's source dims (if known)
+      const outSrc = getSource(link.clip.sourceId);
+      if (outSrc && (canvas.width !== outSrc.width || canvas.height !== outSrc.height)) {
+        canvas.width = outSrc.width; canvas.height = outSrc.height;
+        applyCanvasAspect();
+      }
+      state.activeClipId = link.clip.id;
+      $('clipBadge').textContent = link.kind === 'in' ? link.clip.name + ' (entrada)'
+        : link.kind === 'out' ? link.clip.name + ' (salida)'
+        : link.clip.name + ' → ' + (link.nextClip ? link.nextClip.name : '');
+      // While the boundary frames are still being captured (outCanvas null), drawing the
+      // transition with a null outCanvas would render only inImg over black — a confusing
+      // half-state. Fall back to drawing the outgoing clip's live frame as the background
+      // instead. Once captureClipFrames() finishes it calls drawFrame() again, now with
+      // outCanvas populated, and the full transition renders correctly.
+      if (!outCanvas) {
+        const fallbackClip = link.clip;
+        const fbSrc = getSource(fallbackClip.sourceId);
+        if (fbSrc) {
+          drawClip(fallbackClip, fbSrc);
+          drawTextOverlay(fallbackClip.text, 0, clipDuration(fallbackClip));
+          drawStickers(fallbackClip.stickers, 0, clipDuration(fallbackClip));
+          return;
+        }
+      }
+      renderTransition(link, type, info.progress, outCanvas, inCanvas);
+      return;
+    }
+
+    // ---- Normal clip playback ----
+    const clip = info.clip;
+    const src = getSource(clip.sourceId);
+    if (!src) return;
+    state.activeClipId = clip.id;
+    $('clipBadge').textContent = clip.name;
+    if (canvas.width !== src.width || canvas.height !== src.height) {
+      canvas.width = src.width; canvas.height = src.height;
+      applyCanvasAspect();
+    }
+    // IN/OUT are now rendered as their own transition strips (not embedded in clip playback),
+    // so we draw the clip plainly here.
+    drawClip(clip, src);
+    drawTextOverlay(clip.text, info.offset, clipDuration(clip));
+    drawStickers(clip.stickers, info.offset, clipDuration(clip));
+  }
+
+  // Render a transition strip using captured static frames (no live video playback needed).
+  // outCanvas: last frame of outgoing clip. inCanvas: first frame of incoming clip (null for 'out').
+  function renderTransition(link, type, progress, outCanvas, inCanvas) {
+    const w = canvas.width, h = canvas.height;
+    const p = Math.max(0, Math.min(1, progress));
+    // Clear to black
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+
+    // For 'in' and 'out' links there is only ONE clip involved.
+    //  - 'in'  : outCanvas = first frame of clip 0 (acts as the "incoming" being revealed)
+    //  - 'out' : outCanvas = last frame of the last clip (the clip fading out)
+    // For 'cross': outCanvas = last frame of out clip (background), inCanvas = first frame of next clip.
+    const inImg = inCanvas;
+
+    const drawImg = (img, alpha, transformFn) => {
+      if (!img) return;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.filter = buildFilterString(link.kind === 'out' ? link.clip.filters : (link.nextClip || link.clip).filters);
+      if (transformFn) transformFn();
+      try { ctx.drawImage(img, 0, 0, w, h); } catch (e) {}
+      ctx.restore();
+    };
+
+    if (link.kind === 'in') {
+      // Entrance: reveal the clip's first frame from black
+      switch (type) {
+        case 'fade-black':
+        case 'fade-in':
+          drawImg(outCanvas, p);
+          break;
+        case 'fade-white':
+          ctx.save(); ctx.globalAlpha = 1 - p; ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); ctx.restore();
+          drawImg(outCanvas, p);
+          break;
+        case 'wipe-left':
+          ctx.save(); ctx.beginPath(); ctx.rect(0,0,w*p,h); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'wipe-right':
+          ctx.save(); ctx.beginPath(); ctx.rect(w*(1-p),0,w*p,h); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'wipe-up':
+          ctx.save(); ctx.beginPath(); ctx.rect(0,h*(1-p),w,h*p); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'wipe-down':
+          ctx.save(); ctx.beginPath(); ctx.rect(0,0,w,h*p); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'slide-left':
+          drawImg(outCanvas, 1, () => { ctx.translate((1-p)*w, 0); });
+          break;
+        case 'slide-right':
+          drawImg(outCanvas, 1, () => { ctx.translate(-(1-p)*w, 0); });
+          break;
+        case 'slide-up':
+          drawImg(outCanvas, 1, () => { ctx.translate(0, (1-p)*h); });
+          break;
+        case 'slide-down':
+          drawImg(outCanvas, 1, () => { ctx.translate(0, -(1-p)*h); });
+          break;
+        case 'zoom-in':
+          drawImg(outCanvas, p, () => { const sc = 0.6+0.4*p; ctx.translate(w/2,h/2); ctx.scale(sc,sc); ctx.translate(-w/2,-h/2); });
+          break;
+        case 'zoom-out':
+          drawImg(outCanvas, p, () => { const sc = 1.5-0.5*p; ctx.translate(w/2,h/2); ctx.scale(sc,sc); ctx.translate(-w/2,-h/2); });
+          break;
+        default:
+          drawImg(outCanvas, p);
+      }
+      return;
+    }
+
+    if (link.kind === 'out') {
+      // Exit: the clip's last frame fades to black
+      switch (type) {
+        case 'fade-black':
+        case 'fade-in':
+          drawImg(outCanvas, 1 - p);
+          break;
+        case 'fade-white':
+          drawImg(outCanvas, 1 - p);
+          ctx.save(); ctx.globalAlpha = p; ctx.fillStyle = '#fff'; ctx.fillRect(0,0,w,h); ctx.restore();
+          break;
+        case 'wipe-left':
+          ctx.save(); ctx.beginPath(); ctx.rect(0,0,w*(1-p),h); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'wipe-right':
+          ctx.save(); ctx.beginPath(); ctx.rect(w*p,0,w*(1-p),h); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'wipe-up':
+          ctx.save(); ctx.beginPath(); ctx.rect(0,0,w,h*(1-p)); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'wipe-down':
+          ctx.save(); ctx.beginPath(); ctx.rect(0,h*p,w,h*(1-p)); ctx.clip(); drawImg(outCanvas,1); ctx.restore();
+          break;
+        case 'slide-left':
+          drawImg(outCanvas, 1, () => { ctx.translate(-p*w, 0); });
+          break;
+        case 'slide-right':
+          drawImg(outCanvas, 1, () => { ctx.translate(p*w, 0); });
+          break;
+        case 'slide-up':
+          drawImg(outCanvas, 1, () => { ctx.translate(0, -p*h); });
+          break;
+        case 'slide-down':
+          drawImg(outCanvas, 1, () => { ctx.translate(0, p*h); });
+          break;
+        case 'zoom-in':
+          drawImg(outCanvas, 1 - p, () => { const sc = 1+0.5*p; ctx.translate(w/2,h/2); ctx.scale(sc,sc); ctx.translate(-w/2,-h/2); });
+          break;
+        case 'zoom-out':
+          drawImg(outCanvas, 1 - p, () => { const sc = 1-0.3*p; ctx.translate(w/2,h/2); ctx.scale(sc,sc); ctx.translate(-w/2,-h/2); });
+          break;
+        default:
+          drawImg(outCanvas, 1 - p);
+      }
+      return;
+    }
+
+    // ---- cross: outgoing on background, incoming revealed on top ----
+    drawImg(outCanvas, 1); // background: last frame of outgoing clip (no filter? keep its filter)
+    switch (type) {
+      case 'crossfade':
+        drawImg(inImg, p);
+        break;
+      case 'slide-left':
+        drawImg(inImg, 1, () => { ctx.translate((1-p)*w, 0); });
+        break;
+      case 'slide-right':
+        drawImg(inImg, 1, () => { ctx.translate(-(1-p)*w, 0); });
+        break;
+      case 'slide-up':
+        drawImg(inImg, 1, () => { ctx.translate(0, (1-p)*h); });
+        break;
+      case 'slide-down':
+        drawImg(inImg, 1, () => { ctx.translate(0, -(1-p)*h); });
+        break;
+      case 'wipe-left':
+        ctx.save(); ctx.beginPath(); ctx.rect(0,0,w*p,h); ctx.clip(); drawImg(inImg,1); ctx.restore();
+        break;
+      case 'wipe-right':
+        ctx.save(); ctx.beginPath(); ctx.rect(w*(1-p),0,w*p,h); ctx.clip(); drawImg(inImg,1); ctx.restore();
+        break;
+      case 'wipe-up':
+        ctx.save(); ctx.beginPath(); ctx.rect(0,h*(1-p),w,h*p); ctx.clip(); drawImg(inImg,1); ctx.restore();
+        break;
+      case 'wipe-down':
+        ctx.save(); ctx.beginPath(); ctx.rect(0,0,w,h*p); ctx.clip(); drawImg(inImg,1); ctx.restore();
+        break;
+      case 'fade-black':
+        ctx.save(); ctx.globalAlpha = 1-p; ctx.fillStyle='#000'; ctx.fillRect(0,0,w,h); ctx.restore();
+        drawImg(inImg, p);
+        break;
+      case 'fade-white':
+        ctx.save(); ctx.globalAlpha = 1-p; ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); ctx.restore();
+        drawImg(inImg, p);
+        break;
+      case 'zoom-in':
+        drawImg(inImg, p, () => { const sc = 0.6+0.4*p; ctx.translate(w/2,h/2); ctx.scale(sc,sc); ctx.translate(-w/2,-h/2); });
+        break;
+      case 'zoom-out':
+        drawImg(inImg, p, () => { const sc = 1.5-0.5*p; ctx.translate(w/2,h/2); ctx.scale(sc,sc); ctx.translate(-w/2,-h/2); });
+        break;
+      default:
+        drawImg(inImg, p);
+    }
+  }
+
+
+  // Apply clip transform and draw the source video centered.
+  function applyTransformAndDraw(clip, videoEl) {
+    const w = canvas.width, h = canvas.height;
+    const t = clip.transform;
+    const scale = t.scale / 100;
+    const offX = (t.posX / 100) * w / 2;
+    const offY = (t.posY / 100) * h / 2;
+    ctx.save();
+    ctx.translate(w/2 + offX, h/2 + offY);
+    ctx.rotate(t.rotate * Math.PI / 180);
+    ctx.scale(t.flipH ? -scale : scale, t.flipV ? -scale : scale);
+    try { ctx.drawImage(videoEl, -w/2, -h/2, w, h); } catch (e) {}
+    ctx.restore();
+  }
+
+  function drawClip(clip, src) {
+    const v = src.el;
+    const w = canvas.width, h = canvas.height;
+    ctx.save();
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.globalAlpha = 1;
+    ctx.filter = buildFilterString(clip.filters);
+
+    const t = clip.transform;
+    const scale = t.scale / 100;
+    const offX = (t.posX / 100) * w / 2;
+    const offY = (t.posY / 100) * h / 2;
+    ctx.translate(w/2 + offX, h/2 + offY);
+    ctx.rotate(t.rotate * Math.PI / 180);
+    ctx.scale(t.flipH ? -scale : scale, t.flipV ? -scale : scale);
+    try { ctx.drawImage(v, -w/2, -h/2, w, h); } catch (e) {}
+    ctx.restore();
+  }
+
+  function drawTextOverlay(textCfg, clipOffset, clipDur) {
+    if (!textCfg.content) return;
+    // Respect optional time window: start/duration in seconds within the clip.
+    // duration === 0 means "show for the whole clip".
+    if (typeof clipOffset === 'number' && textCfg.duration > 0) {
+      const start = textCfg.start || 0;
+      // Clamp end to the clip duration so a window longer than the clip ends with the clip.
+      const end = Math.min(typeof clipDur === 'number' && clipDur > 0 ? clipDur : start + textCfg.duration, start + textCfg.duration);
+      if (clipOffset < start - 0.001 || clipOffset > end + 0.001) return;
+    }
+    const w = canvas.width, h = canvas.height;
+    ctx.save();
+    ctx.globalAlpha = textCfg.opacity / 100;
+    const fontSize = Math.max(8, textCfg.size * (w / 800));
+    ctx.font = `bold ${fontSize}px -apple-system, "Segoe UI", Roboto, sans-serif`;
+    ctx.textBaseline = 'middle';
+    const margin = Math.max(20, w * 0.03);
+    let x, align = 'left';
+    const lines = wrapText(ctx, textCfg.content, w - margin*2);
+    const lineH = fontSize * 1.2;
+    const totalH = lineH * lines.length;
+    let startY;
+    if (textCfg.position.includes('left')) { x = margin; align = 'left'; }
+    else if (textCfg.position.includes('right')) { x = w - margin; align = 'right'; }
+    else { x = w/2; align = 'center'; }
+    ctx.textAlign = align;
+    if (textCfg.position.startsWith('top')) startY = margin + fontSize/2;
+    else if (textCfg.position.startsWith('bottom')) startY = h - margin - totalH + fontSize/2;
+    else startY = h/2 - totalH/2 + fontSize/2;
+    lines.forEach((line, i) => {
+      const ly = startY + i * lineH;
+      if (textCfg.bg === 'solid') {
+        const m = ctx.measureText(line);
+        const padX = fontSize*0.4, padY = fontSize*0.2;
+        let bx = x;
+        if (align === 'center') bx = x - m.width/2 - padX;
+        else if (align === 'right') bx = x - m.width - padX;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(bx, ly - fontSize/2 - padY, m.width + padX*2, lineH);
+      } else if (textCfg.bg === 'outline') {
+        ctx.lineWidth = Math.max(2, fontSize*0.12);
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+        ctx.lineJoin = 'round';
+        ctx.strokeText(line, x, ly);
+      } else if (textCfg.bg === 'shadow') {
+        ctx.shadowColor = 'rgba(0,0,0,0.85)';
+        ctx.shadowBlur = fontSize*0.25;
+        ctx.shadowOffsetX = fontSize*0.05;
+        ctx.shadowOffsetY = fontSize*0.05;
+      }
+      ctx.fillStyle = textCfg.color;
+      ctx.fillText(line, x, ly);
+    });
+    ctx.restore();
+  }
+
+  function wrapText(ctx, text, maxW) {
+    const words = text.split(' ');
+    const lines = []; let cur = '';
+    for (const w of words) {
+      const test = cur ? cur + ' ' + w : w;
+      if (ctx.measureText(test).width > maxW && cur) { lines.push(cur); cur = w; }
+      else cur = test;
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
+  // ========= Stickers =========
+  function drawStickers(stickers, clipOffset, clipDur) {
+    if (!stickers || !stickers.length) return;
+    const w = canvas.width, h = canvas.height;
+    stickers.forEach((s, idx) => {
+      // Respect optional time window: start/duration in seconds within the clip.
+      // duration === 0 means "show for the whole clip".
+      if (typeof clipOffset === 'number' && s.duration > 0) {
+        const start = s.start || 0;
+        // Clamp end to the clip's own duration so a window set longer than the clip
+        // doesn't keep the sticker visible past the clip boundary.
+        const end = Math.min(typeof clipDur === 'number' && clipDur > 0 ? clipDur : start + s.duration, start + s.duration);
+        if (clipOffset < start - 0.001 || clipOffset > end + 0.001) return;
+      }
+      ctx.save();
+      ctx.globalAlpha = s.opacity / 100;
+      const size = Math.max(10, s.size * (w / 800));
+      const px = (s.x / 100) * w;
+      const py = (s.y / 100) * h;
+      ctx.translate(px, py);
+      ctx.rotate((s.rotation || 0) * Math.PI / 180);
+      ctx.font = `${size}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(s.emoji, 0, 0);
+      if (idx === state.selectedStickerIdx && !state.isPlaying && !state.exporting) {
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#5b8cff';
+        ctx.lineWidth = Math.max(2, size * 0.04);
+        ctx.setLineDash([8, 6]);
+        ctx.strokeRect(-size/2 - 6, -size/2 - 6, size + 12, size + 12);
+      }
+      ctx.restore();
+    });
+  }
+
+  function renderStickerGrid() {
+    const grid = $('stickerGrid');
+    grid.innerHTML = '';
+    STICKER_LIST.forEach(emoji => {
+      const btn = document.createElement('button');
+      btn.textContent = emoji;
+      btn.title = 'Añadir ' + emoji;
+      btn.addEventListener('click', () => addSticker(emoji));
+      grid.appendChild(btn);
+    });
+  }
+  renderStickerGrid();
+
+  function addSticker(emoji) {
+    const c = getSelectedClip();
+    if (!c) { toast('Selecciona un clip primero', 'error'); return; }
+    c.stickers.push({ emoji, x: 50, y: 50, size: 80, opacity: 100, rotation: 0, start: 0, duration: 0 });
+    state.selectedStickerIdx = c.stickers.length - 1;
+    renderStickerList();
+    drawFrame();
+    renderTimeline();
+    toast('Sticker añadido', 'ok');
+  }
+
+  function renderStickerList() {
+    const c = getSelectedClip();
+    const list = $('stickerList');
+    if (!c || !c.stickers.length) {
+      list.innerHTML = '<div style="color:var(--muted); font-size:12px; padding:8px;">No hay stickers en este clip.</div>';
+      $('stickerCount').textContent = '(0)';
+      $('stickerEditGroup').style.display = 'none';
+      return;
+    }
+    $('stickerCount').textContent = `(${c.stickers.length})`;
+    $('stickerEditGroup').style.display = state.selectedStickerIdx >= 0 ? 'block' : 'none';
+    list.innerHTML = '';
+    c.stickers.forEach((s, idx) => {
+      const item = document.createElement('div');
+      item.className = 'sticker-item' + (idx === state.selectedStickerIdx ? ' selected' : '');
+      item.style.background = idx === state.selectedStickerIdx ? 'rgba(91,140,255,.15)' : 'var(--panel-2)';
+      item.innerHTML = `<span class="emoji">${s.emoji}</span><span class="name">${Math.round(s.x)},${Math.round(s.y)} · ${s.size}px</span><button class="del" data-idx="${idx}">✕</button>`;
+      item.addEventListener('click', (e) => {
+        if (e.target.classList.contains('del')) return;
+        state.selectedStickerIdx = idx;
+        renderStickerList();
+        drawFrame();
+        syncStickerEdit();
+      });
+      item.querySelector('.del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        c.stickers.splice(idx, 1);
+        state.selectedStickerIdx = -1;
+        renderStickerList();
+        renderTimeline();
+        drawFrame();
+      });
+      list.appendChild(item);
+    });
+    syncStickerEdit();
+  }
+
+  function syncStickerEdit() {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) {
+      $('stickerEditGroup').style.display = 'none';
+      return;
+    }
+    const s = c.stickers[state.selectedStickerIdx];
+    $('stickerEditGroup').style.display = 'block';
+    $('stkSize').value = s.size;
+    $('stkSizeVal').textContent = s.size;
+    $('stkOpacity').value = s.opacity;
+    $('stkOpacityVal').textContent = s.opacity + '%';
+    $('stkRot').value = s.rotation || 0;
+    $('stkRotVal').textContent = (s.rotation || 0) + '°';
+    $('stkStart').value = s.start || 0;
+    $('stkStartVal').textContent = (s.start || 0).toFixed(1);
+    const maxDur = Math.max(0, clipDuration(c) - (s.start || 0));
+    $('stkDuration').max = Math.max(0.1, maxDur).toFixed(1);
+    $('stkDuration').value = s.duration || 0;
+    $('stkDurationVal').textContent = s.duration > 0 ? s.duration.toFixed(1) : '0 = todo';
+  }
+
+  $('stkSize').addEventListener('input', (e) => {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) return;
+    const v = parseInt(e.target.value);
+    c.stickers[state.selectedStickerIdx].size = v;
+    $('stkSizeVal').textContent = v;
+    renderStickerList();
+    drawFrame();
+  });
+  $('stkOpacity').addEventListener('input', (e) => {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) return;
+    const v = parseInt(e.target.value);
+    c.stickers[state.selectedStickerIdx].opacity = v;
+    $('stkOpacityVal').textContent = v + '%';
+    drawFrame();
+  });
+  $('stkRot').addEventListener('input', (e) => {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) return;
+    const v = parseInt(e.target.value);
+    c.stickers[state.selectedStickerIdx].rotation = v;
+    $('stkRotVal').textContent = v + '°';
+    drawFrame();
+  });
+  $('stkStart').addEventListener('input', (e) => {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) return;
+    const v = parseFloat(e.target.value);
+    $('stkStartVal').textContent = v.toFixed(1);
+    const s = c.stickers[state.selectedStickerIdx];
+    s.start = v;
+    // Clamp duration so start+duration doesn't exceed clip
+    const maxDur = Math.max(0, clipDuration(c) - v);
+    if (s.duration > maxDur) s.duration = maxDur;
+    syncStickerEdit();
+    renderTimeline();
+    drawFrame();
+  });
+  $('stkDuration').addEventListener('input', (e) => {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) return;
+    const v = parseFloat(e.target.value);
+    $('stkDurationVal').textContent = v > 0 ? v.toFixed(1) : '0 = todo';
+    c.stickers[state.selectedStickerIdx].duration = v;
+    renderTimeline();
+    drawFrame();
+  });
+  $('stkDelete').addEventListener('click', () => {
+    const c = getSelectedClip();
+    if (!c || state.selectedStickerIdx < 0 || !c.stickers[state.selectedStickerIdx]) return;
+    c.stickers.splice(state.selectedStickerIdx, 1);
+    state.selectedStickerIdx = -1;
+    renderStickerList();
+    drawFrame();
+  });
+
+  let stickerDragData = null;
+  canvas.addEventListener('pointerdown', (e) => {
+    const c = getSelectedClip();
+    if (!c || !c.stickers.length) return;
+    if (state.isPlaying) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / rect.width * canvas.width;
+    const cy = (e.clientY - rect.top) / rect.height * canvas.height;
+    for (let i = c.stickers.length - 1; i >= 0; i--) {
+      const s = c.stickers[i];
+      const size = Math.max(10, s.size * (canvas.width / 800));
+      const sx = (s.x / 100) * canvas.width;
+      const sy = (s.y / 100) * canvas.height;
+      if (Math.abs(cx - sx) < size/2 + 8 && Math.abs(cy - sy) < size/2 + 8) {
+        state.selectedStickerIdx = i;
+        stickerDragData = { idx: i, offsetX: cx - sx, offsetY: cy - sy };
+        canvas.setPointerCapture(e.pointerId);
+        renderStickerList();
+        renderTimeline();
+        drawFrame();
+        return;
+      }
+    }
+    if (state.selectedStickerIdx !== -1) {
+      state.selectedStickerIdx = -1;
+      renderStickerList();
+      drawFrame();
+    }
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!stickerDragData) return;
+    const c = getSelectedClip();
+    if (!c) return;
+    const rect = canvas.getBoundingClientRect();
+    const cx = (e.clientX - rect.left) / rect.width * canvas.width;
+    const cy = (e.clientY - rect.top) / rect.height * canvas.height;
+    const s = c.stickers[stickerDragData.idx];
+    if (!s) return;
+    s.x = Math.max(0, Math.min(100, ((cx - stickerDragData.offsetX) / canvas.width) * 100));
+    s.y = Math.max(0, Math.min(100, ((cy - stickerDragData.offsetY) / canvas.height) * 100));
+    drawFrame();
+  });
+  canvas.addEventListener('pointerup', (e) => {
+    if (stickerDragData) {
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+      stickerDragData = null;
+      renderStickerList();
+    }
+  });
+
+  // ========= Playback (multi-source) =========
+  let lastTick = 0;
+  function loop(ts) {
+    if (!state.isPlaying) return;
+    const dt = (ts - lastTick) / 1000;
+    lastTick = ts;
+    state.currentTime += dt * state.globalSpeed;
+    const total = totalDuration();
+    if (state.currentTime >= total) { state.currentTime = total; pause(); return; }
+    const info = clipAtTime(state.currentTime);
+    if (info) {
+      if (info.kind === 'trans') {
+        const link = info.link;
+        const v = getLinkValues(link);
+        // During a transition strip: no live video playback of the outgoing clip.
+        // For 'in'/'out' (single-clip) the audio is silent (the clip is not "playing"
+        // as a normal clip here). For 'cross' we crossfade outgoing→incoming audio.
+        if (link.kind === 'cross' && v.type !== 'none' && link.nextClip) {
+          const outClip = info.outClip, inClip = info.inClip;
+          const inSrc = getSource(inClip.sourceId);
+          // Keep the incoming clip's video roughly synced so its audio matches the
+          // transition progress (it gets revealed as the crossfade proceeds).
+          if (inSrc) {
+            const inOffset = 0; // incoming clip starts at its sourceStart
+            const target = inClip.sourceStart + inOffset * inClip.speed;
+            if (Math.abs(inSrc.el.currentTime - target) > 0.15) {
+              try { inSrc.el.currentTime = target; } catch(e) {}
+            }
+            inSrc.el.playbackRate = inClip.speed * state.globalSpeed;
+            if (inSrc.el.paused) inSrc.el.play().catch(()=>{});
+          }
+          // Pause every other source
+          const activeIds = new Set([inClip.sourceId]);
+          state.sources.forEach(s => { if (!activeIds.has(s.id) && !s.el.paused) s.el.pause(); });
+          // The incoming clip starts playing at the beginning of the cross strip, so its
+          // offset within its own timeline advances 0 -> crossDur as the strip progresses.
+          // Passing the real offset (instead of a fixed 0) makes its audio fadeIn apply
+          // correctly; with 0 it would be silenced for the whole strip whenever fadeIn>0.
+          const crossDur = v.duration || 0;
+          const inClipOffset = info.progress * crossDur;
+          updateAudioGain(outClip, clipDuration(outClip), {
+            nextClip: inClip, progress: info.progress, nextOffset: inClipOffset
+          });
+          // Make sure the outgoing clip's video is paused (we render its captured last frame)
+          const outSrc = getSource(outClip.sourceId);
+          if (outSrc && !outSrc.el.paused) outSrc.el.pause();
+        } else {
+          // 'in', 'out', or inactive cross: silence everything
+          state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); });
+          if (state.srcNodes) state.srcNodes.forEach(n => { n.gain.gain.value = 0; });
+        }
+        captureClipFrames(info.outClip);
+        if (info.inClip) captureClipFrames(info.inClip);
+        state.activeClipId = info.outClip.id;
+      } else {
+        const { clip, offset } = info;
+        const src = getSource(clip.sourceId);
+        if (src) {
+          const targetSourceTime = clip.sourceStart + offset * clip.speed;
+          if (Math.abs(src.el.currentTime - targetSourceTime) > 0.15) {
+            try { src.el.currentTime = targetSourceTime; } catch(e) {}
+          }
+          src.el.playbackRate = clip.speed * state.globalSpeed;
+          if (src.el.paused) src.el.play().catch(()=>{});
+        }
+        // Pause every other source
+        const activeIds = new Set([clip.sourceId]);
+        state.sources.forEach(s => { if (!activeIds.has(s.id) && !s.el.paused) s.el.pause(); });
+        updateAudioGain(clip, offset, null);
+        state.activeClipId = clip.id;
+      }
+    }
+    drawFrame();
+    updateTransport();
+    updatePlayheadScroll();
+    state.rafId = requestAnimationFrame(loop);
+  }
+  function updateAudioGain(clip, offset, cross) {
+    let vol = clip.audio.volume / 100;
+    if (state.muted) vol = 0;
+    const cd = clipDuration(clip);
+    if (clip.audio.fadeIn > 0 && offset < clip.audio.fadeIn) vol *= Math.max(0, offset / clip.audio.fadeIn);
+    if (clip.audio.fadeOut > 0 && offset > cd - clip.audio.fadeOut) vol *= Math.max(0, (cd - offset) / clip.audio.fadeOut);
+    // During cross-transition, fade out the outgoing clip and fade in the incoming
+    let nextVol = 0;
+    if (cross && cross.nextClip) {
+      // Crossfade: outgoing fades from 1->0, incoming from 0->1
+      const p = cross.progress;
+      vol *= (1 - p);
+      nextVol = (cross.nextClip.audio.volume / 100) * p;
+      if (state.muted) nextVol = 0;
+      const ncd = clipDuration(cross.nextClip);
+      if (cross.nextClip.audio.fadeIn > 0 && cross.nextOffset < cross.nextClip.audio.fadeIn)
+        nextVol *= Math.max(0, cross.nextOffset / cross.nextClip.audio.fadeIn);
+    }
+    state.srcNodes.forEach((n, sid) => {
+      let v = 0;
+      if (sid === clip.sourceId) v = vol;
+      else if (cross && cross.nextClip && sid === cross.nextClip.sourceId) v = nextVol;
+      n.gain.gain.value = Math.max(0, Math.min(1, v));
+    });
+  }
+  function ensureAudio() {
+    if (state.audioCtx) {
+      // Wire any new sources added since last call
+      state.sources.forEach(s => {
+        if (!state.srcNodes.has(s.id)) wireSourceAudio(s);
+      });
+      return;
+    }
+    try {
+      state.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      state.masterGain = state.audioCtx.createGain();
+      state.mediaStreamDest = state.audioCtx.createMediaStreamDestination();
+      state.masterGain.connect(state.audioCtx.destination);
+      state.masterGain.connect(state.mediaStreamDest);
+      state.sources.forEach(s => wireSourceAudio(s));
+    } catch (e) { console.warn('Audio init failed', e); }
+  }
+  function wireSourceAudio(src) {
+    if (!state.audioCtx) return;
+    if (state.srcNodes.has(src.id)) return;
+    try {
+      const node = state.audioCtx.createMediaElementSource(src.el);
+      const gain = state.audioCtx.createGain();
+      gain.gain.value = 0;
+      node.connect(gain);
+      gain.connect(state.masterGain);
+      state.srcNodes.set(src.id, { node, gain });
+    } catch (e) { console.warn('Cannot wire source', src.id, e); }
+  }
+  function play() {
+    if (state.sources.length === 0 || state.clips.length === 0) return;
+    ensureAudio();
+    if (state.audioCtx && state.audioCtx.state === 'suspended') state.audioCtx.resume();
+    const total = totalDuration();
+    if (state.currentTime >= total - 0.05) state.currentTime = 0;
+    seekSourceToCurrent();
+    const info = clipAtTime(state.currentTime);
+    if (info && info.kind === 'clip') {
+      // Only start a video source when the playhead is inside a clip; on a transition
+      // strip there is no live clip to play (renderTransition uses captured frames).
+      const src = getSource(info.clip.sourceId);
+      if (src) {
+        src.el.playbackRate = state.globalSpeed;
+        src.el.play().catch(()=>{});
+      }
+    }
+    state.isPlaying = true;
+    lastTick = performance.now();
+    $('btnPlay').textContent = '⏸';
+    state.rafId = requestAnimationFrame(loop);
+  }
+  function pause() {
+    state.isPlaying = false;
+    if (state.rafId) cancelAnimationFrame(state.rafId);
+    state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); });
+    $('btnPlay').textContent = '▶';
+    drawFrame();
+    updateTransport();
+  }
+  function updateTransport() {
+    const total = totalDuration();
+    $('curTime').textContent = fmtTime(state.currentTime);
+    const pps = pxPerSecond();
+    const ph = $('tlTrack').querySelector('.tl-playhead');
+    if (ph) ph.style.left = (state.currentTime * pps) + 'px';
+  }
+
+  $('btnPlay').addEventListener('click', () => state.isPlaying ? pause() : play());
+  $('btnStop').addEventListener('click', () => {
+    if (state.sources.length === 0) return;
+    pause(); state.currentTime = 0;
+    seekSourceToCurrent();
+    drawFrame(); updateTransport(); renderTimeline();
+  });
+  $('btnPrev').addEventListener('click', () => {
+    state.currentTime = Math.max(0, state.currentTime - 5);
+    seekSourceToCurrent(); drawFrame(); updateTransport(); renderTimeline();
+  });
+  $('btnNext').addEventListener('click', () => {
+    state.currentTime = Math.min(totalDuration(), state.currentTime + 5);
+    seekSourceToCurrent(); drawFrame(); updateTransport(); renderTimeline();
+  });
+  $('btnMute').addEventListener('click', () => {
+    state.muted = !state.muted;
+    $('btnMute').textContent = state.muted ? '🔇' : '🔊';
+  });
+  $('speedSel').addEventListener('change', (e) => {
+    state.globalSpeed = parseFloat(e.target.value);
+  });
+
+  // ========= Side panel =========
+  function syncPanelFromClip() {
+    const c = getSelectedClip();
+    if (!c) { $('hintClipName').textContent = '—'; return; }
+    $('hintClipName').textContent = c.name;
+    const f = c.filters;
+    setSlider('brightness', f.brightness, '%');
+    setSlider('contrast', f.contrast, '%');
+    setSlider('saturate', f.saturate, '%');
+    setSlider('hue', f.hue, '°');
+    setSlider('blur', f.blur, 'px');
+    const t = c.transform;
+    document.querySelectorAll('[data-rotate]').forEach(b => b.classList.toggle('active-toggle', parseInt(b.dataset.rotate) === t.rotate));
+    $('flipH').classList.toggle('active-toggle', t.flipH);
+    $('flipV').classList.toggle('active-toggle', t.flipV);
+    setSlider('scale', t.scale, '%');
+    setSlider('posX', t.posX, '');
+    setSlider('posY', t.posY, '');
+    $('clipSpeed').value = Math.round(c.speed * 100);
+    $('clipSpeedVal').textContent = c.speed.toFixed(2) + '×';
+    $('textContent').value = c.text.content;
+    $('textColor').value = c.text.color;
+    setSlider('textSize', c.text.size, '');
+    setSlider('textOpacity', c.text.opacity, '%');
+    $('textPos').value = c.text.position;
+    $('textBg').value = c.text.bg;
+    setSlider('textStart', c.text.start || 0, '');
+    $('textStartVal').textContent = (c.text.start || 0).toFixed(1);
+    const maxTextDur = Math.max(0, clipDuration(c) - (c.text.start || 0));
+    $('textDuration').max = Math.max(0.1, maxTextDur).toFixed(1);
+    $('textDuration').value = c.text.duration || 0;
+    $('textDurationVal').textContent = c.text.duration > 0 ? c.text.duration.toFixed(1) : '0 = todo';
+    setSlider('volume', c.audio.volume, '%');
+    setSlider('fadeIn', c.audio.fadeIn, '');
+    setSlider('fadeOut', c.audio.fadeOut, '');
+    // Transitions are now edited via chain links (see Transitions tab + syncLinkPanel)
+    syncLinkPanel();
+    document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active-toggle'));
+    const preset = matchPreset(f);
+    const btn = document.querySelector(`[data-preset="${preset}"]`);
+    if (btn) btn.classList.add('active-toggle');
+    renderStickerList();
+  }
+
+  // Populate the Transitions tab based on the selected chain link.
+  function syncLinkPanel() {
+    const none = $('linkNone'), editor = $('linkEditor');
+    const link = state.selectedLinkId ? getLink(state.selectedLinkId) : null;
+    if (!link) {
+      none.style.display = 'block';
+      editor.style.display = 'none';
+      return;
+    }
+    none.style.display = 'none';
+    editor.style.display = 'block';
+    // Title + kind description
+    if (link.kind === 'in') {
+      $('linkTitle').textContent = '🔗 Eslabón de entrada (inicio de la timeline)';
+      $('linkKind').textContent = 'Cómo entra el primer clip. Se aplica al inicio absoluto (t=0).';
+      $('linkDurLabel').firstChild.textContent = 'Duración (seg) ';
+      $('linkDur').min = 0.1; $('linkDur').max = 3; $('linkDur').step = 0.1;
+    } else if (link.kind === 'out') {
+      $('linkTitle').textContent = '🔗 Eslabón de salida (final de la timeline)';
+      $('linkKind').textContent = `Cómo sale el último clip "${link.clip.name}". Se aplica al final absoluto.`;
+      $('linkDurLabel').firstChild.textContent = 'Duración (seg) ';
+      $('linkDur').min = 0.1; $('linkDur').max = 3; $('linkDur').step = 0.1;
+    } else {
+      $('linkTitle').textContent = '🔗 Eslabón entre clips';
+      $('linkKind').textContent = `Solapa el final de "${link.clip.name}" con el inicio de "${link.nextClip.name}". Afecta cómo entra "${link.nextClip.name}". El audio también se mezcla.`;
+      $('linkDurLabel').firstChild.textContent = 'Solapamiento (seg) ';
+      const cdurMax = Math.max(0, Math.min(5, clipDuration(link.clip) * 0.5));
+      $('linkDur').min = 0; $('linkDur').max = Math.max(0.1, cdurMax); $('linkDur').step = 0.1;
+    }
+    const v = getLinkValues(link);
+    $('linkType').value = v.type;
+    $('linkDur').value = v.duration || 0;
+    $('linkDurVal').textContent = (v.duration || 0).toFixed(1);
+    // Hint
+    if (link.kind === 'in') {
+      $('linkHint').textContent = `Afecta: ${link.affects}. Duración actual: ${(v.duration||0).toFixed(1)}s desde el inicio del clip.`;
+    } else if (link.kind === 'out') {
+      $('linkHint').textContent = `Afecta: ${link.affects}. Duración actual: ${(v.duration||0).toFixed(1)}s hasta el final del clip.`;
+    } else if (v.type === 'none') {
+      $('linkHint').textContent = 'Sin solapamiento: el clip siguiente empieza cuando este termina (corte seco).';
+    } else {
+      $('linkHint').textContent = `Durante los últimos ${(v.duration||0).toFixed(1)}s de "${link.clip.name}", entra "${link.nextClip.name}" con la transición elegada.`;
+    }
+  }
+  function setSlider(id, val, suffix) {
+    const el = $(id);
+    if (!el) return;
+    el.value = val;
+    const v = $(id + 'Val');
+    if (v) v.textContent = val + suffix;
+  }
+  function matchPreset(f) {
+    const presets = {
+      none: { grayscale:0, sepia:0, invert:0, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+      grayscale: { grayscale:100, sepia:0, invert:0, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+      sepia: { grayscale:0, sepia:100, invert:0, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+      invert: { grayscale:0, sepia:0, invert:100, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+      vintage: { grayscale:0, sepia:60, invert:0, brightness:110, contrast:90, saturate:80, hue:0, blur:0 },
+      cool: { grayscale:0, sepia:0, invert:0, brightness:100, contrast:110, saturate:120, hue:200, blur:0 },
+      warm: { grayscale:0, sepia:0, invert:0, brightness:105, contrast:105, saturate:130, hue:20, blur:0 },
+      vivid: { grayscale:0, sepia:0, invert:0, brightness:105, contrast:120, saturate:160, hue:0, blur:0 }
+    };
+    for (const [name, p] of Object.entries(presets)) {
+      if (Object.keys(p).every(k => p[k] === f[k])) return name;
+    }
+    return 'none';
+  }
+  function applyToSelected(mutator) {
+    const c = getSelectedClip();
+    if (!c) return;
+    mutator(c);
+    drawFrame();
+    renderTimeline();
+  }
+
+  bindRange('brightness', '%', (c, v) => c.filters.brightness = v);
+  bindRange('contrast', '%', (c, v) => c.filters.contrast = v);
+  bindRange('saturate', '%', (c, v) => c.filters.saturate = v);
+  bindRange('hue', '°', (c, v) => c.filters.hue = v);
+  bindRange('blur', 'px', (c, v) => c.filters.blur = v);
+  bindRange('scale', '%', (c, v) => c.transform.scale = v);
+  bindRange('posX', '', (c, v) => c.transform.posX = v);
+  bindRange('posY', '', (c, v) => c.transform.posY = v);
+  bindRange('textSize', '', (c, v) => c.text.size = v);
+  bindRange('textOpacity', '%', (c, v) => c.text.opacity = v);
+  bindRange('volume', '%', (c, v) => c.audio.volume = v);
+  bindRange('fadeIn', '', (c, v) => c.audio.fadeIn = v);
+  bindRange('fadeOut', '', (c, v) => c.audio.fadeOut = v);
+
+  $('clipSpeed').addEventListener('input', (e) => {
+    const v = parseInt(e.target.value);
+    const speed = v / 100;
+    $('clipSpeedVal').textContent = speed.toFixed(2) + '×';
+    applyToSelected(c => { c.speed = speed; refreshClipFrames(c); });
+    seekSourceToCurrent();
+  });
+
+  // Chain link bindings (Transitions tab)
+  $('linkType').addEventListener('change', (e) => {
+    const link = state.selectedLinkId ? getLink(state.selectedLinkId) : null;
+    if (!link) return;
+    const cur = getLinkValues(link);
+    // If turning on a link and duration is 0, default to 0.5s (any kind)
+    let newDur = cur.duration;
+    if (e.target.value !== 'none' && (!newDur || newDur <= 0)) newDur = 0.5;
+    setLinkValues(link, e.target.value, newDur);
+    // When a transition becomes active, capture frames for the involved clips
+    if (e.target.value !== 'none') {
+      captureClipFrames(link.clip);
+      if (link.nextClip) captureClipFrames(link.nextClip);
+    }
+    syncLinkPanel(); renderTimeline(); drawFrame();
+  });
+  $('linkDur').addEventListener('input', (e) => {
+    const link = state.selectedLinkId ? getLink(state.selectedLinkId) : null;
+    if (!link) return;
+    const v = parseFloat(e.target.value);
+    $('linkDurVal').textContent = v.toFixed(1);
+    const cur = getLinkValues(link);
+    setLinkValues(link, cur.type, v);
+    syncLinkPanel(); renderTimeline(); drawFrame();
+  });
+
+  // Text timing bindings
+  $('textStart').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    $('textStartVal').textContent = v.toFixed(1);
+    applyToSelected(c => {
+      c.text.start = v;
+      // Clamp duration so start+duration doesn't exceed clip
+      const maxDur = Math.max(0, clipDuration(c) - v);
+      if (c.text.duration > maxDur) c.text.duration = maxDur;
+    });
+    syncPanelFromClip(); renderTimeline(); drawFrame();
+  });
+  $('textDuration').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    $('textDurationVal').textContent = v > 0 ? v.toFixed(1) : '0 = todo';
+    applyToSelected(c => c.text.duration = v);
+    renderTimeline(); drawFrame();
+  });
+
+  function bindRange(id, suffix, setter) {
+    const el = $(id);
+    const val = $(id + 'Val');
+    el.addEventListener('input', () => {
+      const v = parseFloat(el.value);
+      // Round to avoid float artifacts like 0.30000000000000004 on step-0.1 sliders.
+      val.textContent = (Math.round(v * 100) / 100) + suffix;
+      applyToSelected(c => setter(c, v));
+    });
+  }
+
+  const presets = {
+    none: { grayscale:0, sepia:0, invert:0, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+    grayscale: { grayscale:100, sepia:0, invert:0, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+    sepia: { grayscale:0, sepia:100, invert:0, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+    invert: { grayscale:0, sepia:0, invert:100, brightness:100, contrast:100, saturate:100, hue:0, blur:0 },
+    vintage: { grayscale:0, sepia:60, invert:0, brightness:110, contrast:90, saturate:80, hue:0, blur:0 },
+    cool: { grayscale:0, sepia:0, invert:0, brightness:100, contrast:110, saturate:120, hue:200, blur:0 },
+    warm: { grayscale:0, sepia:0, invert:0, brightness:105, contrast:105, saturate:130, hue:20, blur:0 },
+    vivid: { grayscale:0, sepia:0, invert:0, brightness:105, contrast:120, saturate:160, hue:0, blur:0 }
+  };
+  document.querySelectorAll('[data-preset]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const p = presets[btn.dataset.preset];
+      applyToSelected(c => Object.assign(c.filters, p));
+      document.querySelectorAll('[data-preset]').forEach(b => b.classList.remove('active-toggle'));
+      btn.classList.add('active-toggle');
+      syncPanelFromClip();
+    });
+  });
+
+  document.querySelectorAll('[data-rotate]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const r = parseInt(btn.dataset.rotate);
+      document.querySelectorAll('[data-rotate]').forEach(b => b.classList.remove('active-toggle'));
+      btn.classList.add('active-toggle');
+      applyToSelected(c => c.transform.rotate = r);
+    });
+  });
+  $('flipH').addEventListener('click', () => {
+    applyToSelected(c => c.transform.flipH = !c.transform.flipH);
+    const c = getSelectedClip();
+    $('flipH').classList.toggle('active-toggle', c && c.transform.flipH);
+  });
+  $('flipV').addEventListener('click', () => {
+    applyToSelected(c => c.transform.flipV = !c.transform.flipV);
+    const c = getSelectedClip();
+    $('flipV').classList.toggle('active-toggle', c && c.transform.flipV);
+  });
+
+  $('textContent').addEventListener('input', (e) => applyToSelected(c => c.text.content = e.target.value));
+  $('textColor').addEventListener('input', (e) => applyToSelected(c => c.text.color = e.target.value));
+  $('textPos').addEventListener('change', (e) => applyToSelected(c => c.text.position = e.target.value));
+  $('textBg').addEventListener('change', (e) => applyToSelected(c => c.text.bg = e.target.value));
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      tab.classList.add('active');
+      document.querySelector(`[data-content="${tab.dataset.tab}"]`).classList.add('active');
+    });
+  });
+
+  $('btnSelect').addEventListener('click', () => $('btnSelect').classList.add('active-toggle'));
+
+  $('btnReset').addEventListener('click', () => {
+    if (!confirm('¿Reiniciar todos los ajustes del clip seleccionado?')) return;
+    const c = getSelectedClip();
+    if (!c) return;
+    const defaults = defaultClipSettings();
+    Object.assign(c.filters, defaults.filters);
+    Object.assign(c.transform, defaults.transform);
+    Object.assign(c.text, defaults.text);
+    c.stickers = [];
+    Object.assign(c.transitions, defaults.transitions);
+    Object.assign(c.audio, defaults.audio);
+    c.speed = 1;
+    state.selectedStickerIdx = -1;
+    syncPanelFromClip(); drawFrame(); renderTimeline();
+    toast('Ajustes reiniciados', 'ok');
+  });
+
+  // ========= Zoom control =========
+  const zoomSlider = $('zoomSlider');
+  const zoomVal = $('zoomVal');
+  function setZoom(z, anchorX) {
+    z = Math.max(0.1, Math.min(4, z));
+    if (Math.abs(z - state.zoom) < 0.001) return;
+    const scroll = $('tlScroll');
+    const oldZoom = state.zoom;
+    const oldScroll = scroll.scrollLeft;
+    const total = totalDuration();
+    // pxPerSecond() == (clientWidth / total) * zoom. Snapshot the OLD pps before mutating
+    // state.zoom; the previous code divided by oldZoom here, which is wrong by a factor
+    // of oldZoom^2 (invisible at zoom=1, jumps badly at any other zoom).
+    const oldPps = (scroll.clientWidth / Math.max(0.001, total)) * oldZoom;
+    // anchorX is the time (seconds) that should stay under the cursor
+    if (anchorX === undefined) anchorX = (oldScroll / oldPps) || 0;
+    state.zoom = z;
+    const pct = Math.round(z * 100);
+    zoomSlider.value = pct;
+    zoomVal.textContent = pct + '%';
+    renderTimeline();
+    // Reposition scroll so the anchor time stays at the same screen offset.
+    const pps = pxPerSecond();
+    const newScroll = anchorX * pps - (anchorX * oldPps - oldScroll);
+    scroll.scrollLeft = Math.max(0, newScroll);
+  }
+  zoomSlider.addEventListener('input', (e) => setZoom(parseInt(e.target.value) / 100));
+  $('btnZoomIn').addEventListener('click', () => setZoom(state.zoom * 1.25));
+  $('btnZoomOut').addEventListener('click', () => setZoom(state.zoom / 1.25));
+  $('btnZoomFit').addEventListener('click', () => setZoom(1));
+
+  // Wheel: Ctrl/Cmd = zoom, otherwise horizontal scroll
+  $('tlScroll').addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      const rect = $('tlScroll').getBoundingClientRect();
+      const pps = pxPerSecond();
+      const anchorX = (e.clientX - rect.left + $('tlScroll').scrollLeft) / pps;
+      const factor = e.deltaY < 0 ? 1.12 : 1/1.12;
+      setZoom(state.zoom * factor, anchorX);
+    } else {
+      // Horizontal scroll (shift converts vertical wheel to horizontal)
+      if (e.shiftKey) return; // let browser handle horizontal wheel
+      e.preventDefault();
+      $('tlScroll').scrollLeft += e.deltaY;
+    }
+  }, { passive: false });
+
+  // ========= Save / Load project =========
+  $('btnSave').addEventListener('click', saveProject);
+  $('btnLoad').addEventListener('click', () => $('projectInput').click());
+  $('projectInput').addEventListener('change', (e) => {
+    if (e.target.files[0]) loadProject(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('btnRecover').addEventListener('click', () => {
+    if (!hasAutosave()) { toast('No hay autoguardado previo en este navegador', 'error'); return; }
+    if (state.sources.length === 0) {
+      toast('Importa primero los videos originales; el autoguardado no incluye los archivos de video', 'error');
+      return;
+    }
+    if (state.clips.length > 0 && !confirm('¿Reemplazar el proyecto actual por el autoguardado?')) return;
+    recoverAutosave();
+  });
+  // Enable the Recover button once we know whether an autosave exists.
+  refreshRecoverButton();
+  function refreshRecoverButton() {
+    const el = $('btnRecover'); if (!el) return;
+    el.disabled = !hasAutosave();
+  }
+
+  const PROJECT_VERSION = 3;
+  const AUTO_KEY = 'editorVideoProject:auto';
+  // Stable-ish hash for a source file: combines name + size + lastModified so a renamed
+  // or re-encoded video still matches when the user reloads it. Not cryptographic; just a
+  // dedup key so clips reconnect to the right source after a save/load roundtrip.
+  function sourceFileHash(s) {
+    if (!s) return '';
+    return `${s.fileName}|${s.fileSize || 0}|${s.fileLastModified || 0}|${(s.duration||0).toFixed(3)}`;
+  }
+  function saveProject() {
+    if (state.sources.length === 0) { toast('No hay proyecto que guardar', 'error'); return; }
+    const project = {
+      version: PROJECT_VERSION,
+      sources: state.sources.map(s => ({
+        duration: s.duration, width: s.width, height: s.height,
+        fileName: s.fileName, fileSize: s.fileSize, fileLastModified: s.fileLastModified,
+        fileHash: sourceFileHash(s)
+      })),
+      clips: state.clips.map(c => ({ ...c })),
+      // Playback/editor state so a reload feels continuous
+      globalSpeed: state.globalSpeed,
+      zoom: state.zoom,
+      muted: state.muted,
+      currentTime: state.currentTime,
+      selectedClipId: state.selectedClipId,
+      savedAt: new Date().toISOString()
+    };
+    const json = JSON.stringify(project, null, 2);
+    // Also stash in localStorage as the latest autosave (for "recuperar" on next open)
+    try { localStorage.setItem(AUTO_KEY, json); } catch(e) {}
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const baseName = state.sources[0].fileName ? state.sources[0].fileName.replace(/\.[^.]+$/, '') : 'proyecto';
+    const stamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+    const name = `${baseName}-proyecto-${stamp}.json`;
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    toast('Proyecto guardado (y autoguardado en este navegador)', 'ok');
+    refreshRecoverButton();
+  }
+
+  function loadProject(file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const project = JSON.parse(e.target.result);
+        applyProject(project, { replaceSources: false });
+        toast(`Proyecto cargado: ${state.clips.length} clips`, 'ok');
+      } catch (err) {
+        toast('Error al cargar el proyecto: ' + err.message, 'error');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // Shared core for both "load from file" and "recover autosave".
+  // opts.replaceSources: when true, the project's source list is taken as authoritative
+  //   (used by recover, where we want a clean slate). When false (file load), we keep the
+  //   currently imported sources and map the project's clips onto them.
+  function applyProject(project, opts) {
+    if (!project || !project.clips || !Array.isArray(project.clips)) throw new Error('Formato inválido');
+    if (typeof project.version === 'number' && project.version > PROJECT_VERSION) {
+      throw new Error(`Versión ${project.version} no soportada (máx ${PROJECT_VERSION})`);
+    }
+    if (state.sources.length === 0) {
+      throw new Error('Primero importa los videos originales para aplicar el proyecto');
+    }
+    // Build source mapping keyed by the project's sourceId STRING -> currently-loaded source.
+    // Priority: fileHash (exact) > fileName + duration > fileName only.
+    // (Previously this was keyed by project-source array index, but resolveSrc looked it up
+    //  by a DIFFERENT index — first-appearance order of sourceIds in clips — so the two
+    //  index spaces only coincided by accident, and a miss fell back to state.sources[idx],
+    //  silently assigning the WRONG source. Keying by sourceId string removes the ambiguity.)
+    const sourceMapping = new Map();
+    const projSources = Array.isArray(project.sources) ? project.sources : [];
+    projSources.forEach((ps) => {
+      if (sourceMapping.has(ps.id)) return;
+      const ph = ps.fileHash || sourceFileHash(ps);
+      // 1) exact hash match
+      let match = state.sources.find(s => sourceFileHash(s) === ph);
+      // 2) fileName + duration match (covers re-saved files with new lastModified)
+      if (!match) match = state.sources.find(s => s.fileName === ps.fileName && Math.abs((s.duration||0) - (ps.duration||0)) < 0.1);
+      // 3) fileName only
+      if (!match) match = state.sources.find(s => s.fileName === ps.fileName);
+      if (match) sourceMapping.set(ps.id, match.id);
+    });
+
+    const resolveSrc = (c) => {
+      const mappedId = sourceMapping.get(c.sourceId);
+      return mappedId ? state.sources.find(s => s.id === mappedId) : null;
+    };
+
+    const ok = project.clips.every(c => {
+      const src = resolveSrc(c);
+      if (!src) return false;
+      return typeof c.sourceStart === 'number' && typeof c.sourceEnd === 'number' &&
+             c.sourceStart >= 0 && c.sourceEnd <= src.duration + 0.5;
+    });
+    if (!ok) throw new Error('El proyecto no coincide con los videos cargados');
+
+    // Build the new clips array fully BEFORE mutating state, so a failure above leaves
+    // the editor untouched. Also drop stale clipboard/selection that referenced the
+    // previous project's clips (a pasted clip could otherwise carry an unmapped sourceId).
+    state.clipboard = null;
+    if ($('btnPaste')) $('btnPaste').disabled = true;
+    const newClips = project.clips.map(c => {
+      const d = defaultClipSettings();
+      const src = resolveSrc(c);
+      return {
+        id: newClipId(),
+        sourceId: src.id,
+        name: c.name || 'Clip',
+        sourceStart: c.sourceStart,
+        sourceEnd: c.sourceEnd,
+        filters: { ...d.filters, ...(c.filters||{}) },
+        transform: { ...d.transform, ...(c.transform||{}) },
+        text: { ...d.text, ...(c.text||{}) },
+        stickers: Array.isArray(c.stickers) ? c.stickers.map(s => ({ ...s })) : [],
+        transitions: { ...d.transitions, ...(c.transitions||{}) },
+        crossTransition: { ...d.crossTransition, ...(c.crossTransition||{}) },
+        audio: { ...d.audio, ...(c.audio||{}) },
+        speed: c.speed || 1
+      };
+    });
+    state.clips = newClips;
+
+    // Restore editor/playback state (with bounds checks)
+    if (typeof project.globalSpeed === 'number' && project.globalSpeed > 0) {
+      state.globalSpeed = project.globalSpeed;
+      const sel = $('speedSel'); if (sel) sel.value = String(project.globalSpeed);
+    }
+    if (typeof project.zoom === 'number' && project.zoom > 0) state.zoom = project.zoom;
+    state.muted = !!project.muted;
+    const total = totalDuration();
+    const savedTime = typeof project.currentTime === 'number' ? project.currentTime : 0;
+    state.currentTime = Math.max(0, Math.min(savedTime, total));
+    // Re-select the clip that was selected when saved, if it still exists (by index fallback)
+    state.selectedClipId = null;
+    if (project.selectedClipId) {
+      const oldIdx = project.clips.findIndex(c => c.id === project.selectedClipId);
+      if (oldIdx >= 0 && state.clips[oldIdx]) state.selectedClipId = state.clips[oldIdx].id;
+    }
+    if (!state.selectedClipId && state.clips[0]) state.selectedClipId = state.clips[0].id;
+    state.selectedStickerIdx = -1;
+    state.selectedLinkId = null;
+    state.activeClipId = null;
+    invalidateAllThumbs();
+    state.clips.forEach(captureClipFrames);
+    seekSourceToCurrent();
+    syncPanelFromClip(); renderTimeline(); drawFrame(); updateTransport();
+  }
+
+  // Autosave to localStorage, debounced. Called after meaningful edits.
+  let autoSaveTimer = null;
+  function scheduleAutosave() {
+    if (autoSaveTimer) clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(() => {
+      if (state.sources.length === 0 || state.clips.length === 0) return;
+      try {
+        const project = {
+          version: PROJECT_VERSION,
+          sources: state.sources.map(s => ({
+            duration: s.duration, width: s.width, height: s.height,
+            fileName: s.fileName, fileSize: s.fileSize, fileLastModified: s.fileLastModified,
+            fileHash: sourceFileHash(s)
+          })),
+          clips: state.clips.map(c => ({ ...c })),
+          globalSpeed: state.globalSpeed, zoom: state.zoom, muted: state.muted,
+          currentTime: state.currentTime, selectedClipId: state.selectedClipId,
+          savedAt: new Date().toISOString(), autosave: true
+        };
+        localStorage.setItem(AUTO_KEY, JSON.stringify(project));
+        refreshRecoverButton();
+      } catch(e) {}
+    }, 800);
+  }
+  function hasAutosave() {
+    try { return !!localStorage.getItem(AUTO_KEY); } catch(e) { return false; }
+  }
+  function recoverAutosave() {
+    let project;
+    try { project = JSON.parse(localStorage.getItem(AUTO_KEY) || 'null'); } catch(e) { project = null; }
+    if (!project) { toast('No hay autoguardado previo', 'error'); return; }
+    try {
+      applyProject(project, { replaceSources: true });
+      toast('Proyecto recuperado del autoguardado', 'ok');
+    } catch (err) {
+      toast('No se pudo recuperar: ' + err.message, 'error');
+    }
+  }
+  function clearAutosave() {
+    try { localStorage.removeItem(AUTO_KEY); } catch(e) {}
+  }
+
+  // ========= Export =========
+  $('btnExport').addEventListener('click', openExportModal);
+  $('btnCancelExport').addEventListener('click', () => {
+    state.exportCancel = true;
+    if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') state.mediaRecorder.stop();
+    state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); });
+    state.isPlaying = false;
+    state.exporting = false;
+    // Dismiss the modal and reset its UI so the user isn't left staring at a frozen
+    // "Renderizando... X%" panel (previously the only dismiss path was btnDownloadResult,
+    // which stays hidden on cancel).
+    $('exportModal').classList.remove('show');
+    $('exportProgress').style.width = '0%';
+    $('exportProgress').classList.remove('stage-2');
+    $('exportStatus').textContent = 'Exportación cancelada';
+    $('btnDownloadResult').classList.add('hidden');
+    $('btnCancelExport').disabled = false;
+    updateTransport();
+    toast('Exportación cancelada', 'ok');
+  });
+  $('btnDownloadResult').addEventListener('click', () => $('exportModal').classList.remove('show'));
+
+  document.querySelectorAll('#formatSel label').forEach(l => {
+    l.addEventListener('click', () => {
+      document.querySelectorAll('#formatSel label').forEach(x => x.classList.remove('selected'));
+      l.classList.add('selected');
+      l.querySelector('input').checked = true;
+    });
+  });
+  function getSelectedFormat() {
+    const checked = document.querySelector('#formatSel input:checked');
+    return checked ? checked.value : 'webm';
+  }
+
+  function openExportModal() {
+    if (state.sources.length === 0) return;
+    $('exportModal').classList.add('show');
+    $('exportProgress').style.width = '0%';
+    $('exportProgress').classList.remove('stage-2');
+    $('exportStatus').textContent = 'Preparando exportación...';
+    $('btnDownloadResult').classList.add('hidden');
+    $('btnCancelExport').disabled = false;
+    startExport().catch(err => {
+      console.error(err);
+      $('exportStatus').textContent = 'Error: ' + (err.message || err);
+      toast('Error al exportar', 'error');
+    });
+  }
+
+  async function startExport() {
+    state.exportCancel = false;
+    state.exporting = true;
+    const format = getSelectedFormat();
+    const webmBlob = await renderToWebM();
+    state.exporting = false;
+    if (state.exportCancel) return;
+    if (format === 'webm') {
+      downloadBlob(webmBlob, `video-editado-${Date.now()}.webm`);
+      $('exportProgress').style.width = '100%';
+      $('exportStatus').textContent = `✓ Exportado: WebM (${(webmBlob.size/1024/1024).toFixed(2)} MB)`;
+      $('btnCancelExport').disabled = true;
+      $('btnDownloadResult').classList.remove('hidden');
+      toast('Video WebM exportado', 'ok');
+      return;
+    }
+    $('exportProgress').classList.add('stage-2');
+    $('exportProgress').style.width = '0%';
+    $('exportStatus').textContent = 'Cargando ffmpeg.wasm... (~25 MB)';
+    const mp4Blob = await transcodeToMP4(webmBlob);
+    if (state.exportCancel) return;
+    downloadBlob(mp4Blob, `video-editado-${Date.now()}.mp4`);
+    $('exportProgress').style.width = '100%';
+    $('exportStatus').textContent = `✓ Exportado: MP4 (${(mp4Blob.size/1024/1024).toFixed(2)} MB)`;
+    $('btnCancelExport').disabled = true;
+    $('btnDownloadResult').classList.remove('hidden');
+    toast('Video MP4 exportado', 'ok');
+  }
+
+  function downloadBlob(blob, filename) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  async function renderToWebM() {
+    const fps = 30;
+    const videoStream = canvas.captureStream(fps);
+    ensureAudio();
+    const tracks = [...videoStream.getVideoTracks()];
+    if (state.mediaStreamDest) tracks.push(...state.mediaStreamDest.stream.getAudioTracks());
+    const combined = new MediaStream(tracks);
+    const mime = pickMime();
+    const recorder = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: 5_000_000 });
+    state.mediaRecorder = recorder;
+    const chunks = [];
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    pause();
+    state.currentTime = 0;
+    seekSourceToCurrent();
+    await new Promise(r => setTimeout(r, 150));
+    const total = totalDuration();
+    state.sources.forEach(s => { s.el.muted = false; s.el.volume = 1; });
+    // Pre-capture frames for all transition strips so the export can render them
+    state.clips.forEach(c => captureClipFrames(c));
+    await new Promise(r => setTimeout(r, 250));
+    // Start the first source (if at t=0 we're inside a clip, not a strip)
+    const info0 = clipAtTime(0);
+    if (info0 && info0.kind === 'clip') {
+      const src = getSource(info0.clip.sourceId);
+      if (src) { src.el.playbackRate = state.globalSpeed; src.el.play().catch(()=>{}); }
+    }
+    state.isPlaying = true;
+    state.exporting = true;
+    lastTick = performance.now();
+    recorder.start(100);
+    $('exportStatus').textContent = 'Renderizando frames... 0%';
+
+    return new Promise((resolve) => {
+      function tick(ts) {
+        if (state.exportCancel) {
+          if (recorder.state !== 'inactive') recorder.stop();
+          return;
+        }
+        const dt = (ts - lastTick) / 1000;
+        lastTick = ts;
+        state.currentTime += dt * state.globalSpeed;
+        if (state.currentTime >= total) {
+          state.currentTime = total;
+          if (recorder.state !== 'inactive') recorder.stop();
+          return;
+        }
+        const info = clipAtTime(state.currentTime);
+        if (info) {
+          if (info.kind === 'trans') {
+            const link = info.link;
+            const v = getLinkValues(link);
+            // Crossfade audio during an active 'cross' strip; silence otherwise.
+            if (link.kind === 'cross' && v.type !== 'none' && link.nextClip) {
+              const outClip = info.outClip, inClip = info.inClip;
+              const inSrc = getSource(inClip.sourceId);
+              if (inSrc) {
+                const target = inClip.sourceStart;
+                if (Math.abs(inSrc.el.currentTime - target) > 0.15) {
+                  try { inSrc.el.currentTime = target; } catch(e) {}
+                }
+                inSrc.el.playbackRate = inClip.speed * state.globalSpeed;
+                if (inSrc.el.paused) inSrc.el.play().catch(()=>{});
+              }
+              const activeIds = new Set([inClip.sourceId]);
+              state.sources.forEach(s => { if (!activeIds.has(s.id) && !s.el.paused) s.el.pause(); });
+              // Mirror the loop(): incoming clip offset advances 0 -> crossDur across the strip
+              // so its audio fadeIn is applied (a fixed 0 would silence it for the whole strip).
+              const crossDur = v.duration || 0;
+              const inClipOffset = info.progress * crossDur;
+              updateAudioGain(outClip, clipDuration(outClip), {
+                nextClip: inClip, progress: info.progress, nextOffset: inClipOffset
+              });
+              const outSrc = getSource(outClip.sourceId);
+              if (outSrc && !outSrc.el.paused) outSrc.el.pause();
+            } else {
+              state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); });
+              if (state.srcNodes) state.srcNodes.forEach(n => { n.gain.gain.value = 0; });
+            }
+            state.activeClipId = info.outClip.id;
+          } else {
+            const { clip, offset } = info;
+            const src = getSource(clip.sourceId);
+            if (src) {
+              const target = clip.sourceStart + offset * clip.speed;
+              if (Math.abs(src.el.currentTime - target) > 0.15) {
+                try { src.el.currentTime = target; } catch(e) {}
+              }
+              src.el.playbackRate = clip.speed * state.globalSpeed;
+              if (src.el.paused) src.el.play().catch(()=>{});
+            }
+            const activeIds = new Set([clip.sourceId]);
+            state.sources.forEach(s => { if (!activeIds.has(s.id) && !s.el.paused) s.el.pause(); });
+            updateAudioGain(clip, offset, null);
+            state.activeClipId = clip.id;
+          }
+        }
+        drawFrame();
+        const pct = (state.currentTime / total) * 100;
+        $('exportProgress').style.width = pct + '%';
+        $('exportStatus').textContent = `Renderizando... ${pct.toFixed(1)}% · ${fmtTime(state.currentTime)} / ${fmtTime(total)}`;
+        requestAnimationFrame(tick);
+      }
+      requestAnimationFrame(tick);
+      recorder.onstop = () => {
+        state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); });
+        state.isPlaying = false;
+        state.exporting = false;
+        resolve(new Blob(chunks, { type: mime }));
+      };
+    });
+  }
+
+  function pickMime() {
+    const candidates = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'];
+    for (const c of candidates) if (MediaRecorder.isTypeSupported(c)) return c;
+    return 'video/webm';
+  }
+
+  // ========= ffmpeg.wasm =========
+  let ffmpegInstance = null;
+  async function loadFFmpegLib() {
+    if (window.FFmpeg) return window.FFmpeg;
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://unpkg.com/@ffmpeg/ffmpeg@0.10.1/dist/ffmpeg.min.js';
+      s.onload = () => resolve(window.FFmpeg);
+      s.onerror = () => reject(new Error('No se pudo cargar ffmpeg.wasm. Verifica tu conexión a internet.'));
+      document.head.appendChild(s);
+    });
+  }
+  async function transcodeToMP4(webmBlob) {
+    // ffmpeg.wasm (single-thread build @0.10.1) needs SharedArrayBuffer, which browsers
+    // only expose when the page is served with COOP/COEP isolation headers. Detect that
+    // here and give a clear, actionable error instead of the cryptic
+    // "SharedArrayBuffer is not defined" that createFFmpeg() would otherwise throw.
+    if (typeof SharedArrayBuffer === 'undefined') {
+      const isolated = (typeof self !== 'undefined' && self.crossOriginIsolated);
+      const hint = isolated
+        ? 'El navegador reporta aislamiento cross-origin pero SharedArrayBuffer sigue sin estar disponible.'
+        : 'El servidor debe enviar las cabeceras "Cross-Origin-Opener-Policy: same-origin" y "Cross-Origin-Embedder-Policy: require-corp". Si abres el HTML directamente con file:// no funcionará; sírvelo desde un servidor que incluya esas cabeceras.';
+      throw new Error('No se puede exportar a MP4 en este entorno. ' + hint);
+    }
+    const FFmpeg = await loadFFmpegLib();
+    const { createFFmpeg, fetchFile } = FFmpeg;
+    if (!ffmpegInstance) {
+      ffmpegInstance = createFFmpeg({
+        log: false,
+        progress: ({ ratio }) => {
+          if (ratio >= 0 && ratio <= 1) {
+            $('exportProgress').style.width = (ratio * 100).toFixed(1) + '%';
+            $('exportStatus').textContent = `Transcodificando a MP4... ${(ratio*100).toFixed(0)}%`;
+          }
+        },
+        corePath: 'https://unpkg.com/@ffmpeg/core@0.10.0/dist/ffmpeg-core.js'
+      });
+      $('exportStatus').textContent = 'Cargando ffmpeg.wasm... (~25 MB)';
+      await ffmpegInstance.load();
+    }
+    const inputName = 'input.webm';
+    const outputName = 'output.mp4';
+    ffmpegInstance.FS('writeFile', inputName, await fetchFile(webmBlob));
+    $('exportStatus').textContent = 'Transcodificando a MP4... 0%';
+    await ffmpegInstance.run('-i', inputName, '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', outputName);
+    const data = ffmpegInstance.FS('readFile', outputName);
+    try { ffmpegInstance.FS('unlink', inputName); } catch(e) {}
+    try { ffmpegInstance.FS('unlink', outputName); } catch(e) {}
+    return new Blob([data.buffer], { type: 'video/mp4' });
+  }
+
+  window.addEventListener('resize', () => { if (state.sources.length) { renderTimeline(); drawFrame(); } });
+  document.addEventListener('keydown', (e) => {
+    if (state.sources.length === 0) return;
+    const tag = e.target.tagName;
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
+    // Space: don't hijack the standard "activate focused button/select" gesture.
+    if (e.code === 'Space') {
+      if (typing || tag === 'BUTTON' || tag === 'SELECT') return;
+      e.preventDefault(); state.isPlaying ? pause() : play();
+      return;
+    }
+    if (typing) return;
+    if (e.code === 'Delete' && state.selectedClipId) {
+      e.preventDefault();
+      if (state.selectedStickerIdx >= 0) {
+        const c = getSelectedClip();
+        if (c) { c.stickers.splice(state.selectedStickerIdx, 1); state.selectedStickerIdx = -1; renderStickerList(); renderTimeline(); drawFrame(); toast('Sticker eliminado', 'ok'); }
+      } else deleteSelected();
+    }
+    else if (e.code === 'KeyS' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); splitAtPlayhead(); }
+    else if (e.code === 'KeyC' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); copySelected(); }
+    else if (e.code === 'KeyV' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); pasteClip(); }
+    else if (e.code === 'KeyX' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); cutSelected(); }
+    else if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); duplicateSelected(); }
+  });
+
+  // ---- Autosave hooks ----
+  // Wrap renderTimeline so any structural change (split, delete, resize end, drag, paste,
+  // transition edit, etc.) triggers a debounced autosave to localStorage. Plus a periodic
+  // safety net that also captures currentTime / selectedClipId while idling/playing.
+  (function setupAutosave() {
+    const origRender = renderTimeline;
+    renderTimeline = function() { const r = origRender.apply(this, arguments); scheduleAutosave(); return r; };
+    // Also autosave playback position periodically while the user is editing/playing.
+    setInterval(() => { if (state.sources.length && state.clips.length) scheduleAutosave(); }, 5000);
+    // On load, offer to recover if an autosave exists and there are already sources loaded.
+    // (Sources are needed because the project only stores metadata about the videos, not
+    //  the video data itself — the user must re-import the original files.)
+  })();
+
+  // Ctrl/Cmd+Shift+S -> save project (Ctrl/Cmd+S alone is "split at playhead", per the
+  // Dividir button title; saving is on Shift+S plus the Guardar button).
+  document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.code === 'KeyS')) { e.preventDefault(); saveProject(); }
+  });
+
+  // ============================================================
+  // ============ AUTOMATION API (window.editorAPI) ============
+  // ============================================================
+  // Exposes the editor's internal functions to external automation (headless driver,
+  // MCP server, tests). Every method returns a plain JSON-serializable result (or a
+  // Promise that resolves to one) so it can cross the Playwright/page.evaluate boundary.
+  // Mutating methods re-render after applying, so the canvas/timeline reflect the change.
+  window.editorAPI = {
+    // --- Status / introspection (read-only) ---
+    ready: () => true,
+    snapshot: () => ({
+      sources: state.sources.map(s => ({ id: s.id, fileName: s.fileName, duration: s.duration, width: s.width, height: s.height })),
+      clips: state.clips.map((c, i) => ({
+        index: i, id: c.id, sourceId: c.sourceId, name: c.name,
+        sourceStart: c.sourceStart, sourceEnd: c.sourceEnd, duration: clipDuration(c),
+        speed: c.speed,
+        filters: { ...c.filters }, transform: { ...c.transform },
+        text: { ...c.text },
+        stickers: c.stickers.map(s => ({ ...s })),
+        transitions: { ...c.transitions },
+        crossTransition: { ...c.crossTransition },
+        audio: { ...c.audio }
+      })),
+      links: linkList().map(l => ({
+        id: l.id, kind: l.kind, clipIdx: l.clipIdx, start: l.start,
+        affects: l.affects,
+        type: l.kind === 'in' ? l.clip.transitions.inType : (l.kind === 'out' ? l.clip.transitions.outType : l.clip.crossTransition.type),
+        duration: l.kind === 'in' ? l.clip.transitions.inDur : (l.kind === 'out' ? l.clip.transitions.outDur : l.clip.crossTransition.duration)
+      })),
+      selectedClipId: state.selectedClipId,
+      selectedLinkId: state.selectedLinkId,
+      selectedStickerIdx: state.selectedStickerIdx,
+      currentTime: state.currentTime,
+      totalDuration: totalDuration(),
+      zoom: state.zoom,
+      isPlaying: !!state.isPlaying,
+      exporting: !!state.exporting
+    }),
+
+    // --- Sources ---
+    // Fetches a URL into a File and loads it via the existing loadVideo path, then polls
+    // until the clip appears (loadVideo is async via the 'loadedmetadata' event).
+    loadSource: async (url, fileName) => {
+      const resp = await fetch(url);
+      const blob = await resp.blob();
+      const file = new File([blob], fileName || (url.split('/').pop() || 'source.mp4'), { type: blob.type || 'video/mp4' });
+      const before = state.clips.length;
+      loadVideo(file);
+      const t0 = Date.now();
+      while (state.clips.length === before && (Date.now() - t0) < 10000) await new Promise(r => setTimeout(r, 100));
+      if (state.clips.length === before) return { ok: false, error: 'source load timed out' };
+      const src = state.sources[state.sources.length - 1];
+      const clip = state.clips[state.clips.length - 1];
+      return { ok: true, sourceId: src.id, clipId: clip.id, duration: src.duration };
+    },
+
+    // --- Clip ops (step-by-step) ---
+    selectClip: (id) => { selectClip(id); return { ok: true, selectedClipId: state.selectedClipId }; },
+    selectClipByIndex: (i) => { if (i < 0 || i >= state.clips.length) return { ok: false, error: 'index out of range' }; selectClip(state.clips[i].id); return { ok: true, selectedClipId: state.selectedClipId }; },
+    splitAtPlayhead: () => { try { splitAtPlayhead(); return { ok: true }; } catch(e) { return { ok: false, error: e.message }; } },
+    splitClipAt: async (clipId, secondsIntoClip) => {
+      const clip = state.clips.find(c => c.id === clipId);
+      if (!clip) return { ok: false, error: 'clip not found' };
+      const idx = state.clips.indexOf(clip);
+      const start = clipStartTime(idx);
+      state.currentTime = start + secondsIntoClip;
+      seekSourceToCurrent();
+      await new Promise(r => setTimeout(r, 100));
+      try { splitAtPlayhead(); return { ok: true }; } catch(e) { return { ok: false, error: e.message }; }
+    },
+    deleteClip: (id) => { if (state.clips.length <= 1) return { ok: false, error: 'cannot delete the only clip' }; deleteClipById(id); return { ok: true }; },
+    deleteSelectedClip: () => { if (state.clips.length <= 1) return { ok: false, error: 'cannot delete the only clip' }; deleteSelected(); return { ok: true }; },
+    duplicateSelected: () => { duplicateSelected(); return { ok: true, selectedClipId: state.selectedClipId }; },
+    copySelected: () => { copySelected(); return { ok: true }; },
+    cutSelected: () => { cutSelected(); return { ok: true }; },
+    paste: () => { pasteClip(); return { ok: true, selectedClipId: state.selectedClipId }; },
+    moveClip: (fromIdx, toIdx) => {
+      if (fromIdx < 0 || fromIdx >= state.clips.length || toIdx < 0 || toIdx >= state.clips.length) return { ok: false, error: 'index out of range' };
+      const arr = state.clips.splice(fromIdx, 1);
+      state.clips.splice(toIdx, 0, arr[0]);
+      state.selectedLinkId = null; state.activeClipId = null;
+      renderTimeline(); drawFrame();
+      return { ok: true };
+    },
+    trimClip: (id, sourceStart, sourceEnd) => {
+      const c = state.clips.find(x => x.id === id);
+      if (!c) return { ok: false, error: 'clip not found' };
+      const src = getSource(c.sourceId);
+      if (!src) return { ok: false, error: 'source not found' };
+      if (typeof sourceStart === 'number') c.sourceStart = Math.max(0, Math.min(sourceStart, src.duration));
+      if (typeof sourceEnd === 'number') c.sourceEnd = Math.max(c.sourceStart + 0.1, Math.min(sourceEnd, src.duration));
+      invalidateClipThumb(c.id); invalidateClipFrames(c.id);
+      captureClipFrames(c);
+      syncPanelFromClip(); renderTimeline(); drawFrame();
+      return { ok: true, sourceStart: c.sourceStart, sourceEnd: c.sourceEnd };
+    },
+    setClipSpeed: (id, speed) => {
+      const c = state.clips.find(x => x.id === id);
+      if (!c) return { ok: false, error: 'clip not found' };
+      c.speed = speed; syncPanelFromClip(); renderTimeline(); drawFrame();
+      return { ok: true };
+    },
+
+    // --- Transitions (links) ---
+    selectLink: (id) => { selectLink(id); return { ok: true, selectedLinkId: state.selectedLinkId }; },
+    selectLinkByIndex: (clipIdx, kind) => {
+      const id = kind === 'in' ? 'in-0' : (kind === 'out' ? 'out-' + (state.clips.length - 1) : 'cross-' + clipIdx);
+      selectLink(id); return { ok: true, selectedLinkId: state.selectedLinkId };
+    },
+    setTransition: (linkId, type, duration) => {
+      const link = getLink(linkId);
+      if (!link) return { ok: false, error: 'link not found' };
+      setLinkValues(link, type, duration);
+      syncLinkPanel(); renderTimeline(); drawFrame();
+      return { ok: true };
+    },
+    setCrossTransition: (clipIdx, type, duration) => {
+      if (clipIdx < 0 || clipIdx >= state.clips.length - 1) return { ok: false, error: 'no next clip for cross at this index' };
+      return api.setTransition('cross-' + clipIdx, type, duration);
+    },
+
+    // --- Text overlay (on selected clip) ---
+    setText: (cfg) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      Object.assign(c.text, cfg);
+      syncPanelFromClip(); renderTimeline(); drawFrame();
+      return { ok: true, text: { ...c.text } };
+    },
+
+    // --- Stickers (on selected clip) ---
+    addSticker: (emoji, cfg) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      const s = { emoji, x: 50, y: 50, size: 80, opacity: 100, rotation: 0, start: 0, duration: 0, ...(cfg||{}) };
+      c.stickers.push(s);
+      state.selectedStickerIdx = c.stickers.length - 1;
+      renderStickerList(); syncStickerEdit(); renderTimeline(); drawFrame();
+      return { ok: true, stickerIdx: c.stickers.length - 1 };
+    },
+    updateSticker: (idx, cfg) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      if (idx < 0 || idx >= c.stickers.length) return { ok: false, error: 'sticker index out of range' };
+      Object.assign(c.stickers[idx], cfg);
+      state.selectedStickerIdx = idx;
+      renderStickerList(); syncStickerEdit(); renderTimeline(); drawFrame();
+      return { ok: true };
+    },
+    removeSticker: (idx) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      if (idx < 0 || idx >= c.stickers.length) return { ok: false, error: 'sticker index out of range' };
+      c.stickers.splice(idx, 1);
+      state.selectedStickerIdx = -1;
+      renderStickerList(); renderTimeline(); drawFrame();
+      return { ok: true };
+    },
+
+    // --- Filters / transform / audio (on selected clip) ---
+    setFilters: (f) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      Object.assign(c.filters, f); syncPanelFromClip(); drawFrame();
+      return { ok: true };
+    },
+    applyPreset: (name) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      const p = presets[name]; if (!p) return { ok: false, error: 'unknown preset' };
+      Object.assign(c.filters, p); syncPanelFromClip(); drawFrame();
+      return { ok: true };
+    },
+    setTransform: (t) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      Object.assign(c.transform, t); syncPanelFromClip(); drawFrame();
+      return { ok: true };
+    },
+    setAudio: (a) => {
+      const c = getSelectedClip(); if (!c) return { ok: false, error: 'no clip selected' };
+      Object.assign(c.audio, a); syncPanelFromClip(); drawFrame();
+      return { ok: true };
+    },
+
+    // --- Transport / seek ---
+    seek: (seconds) => {
+      state.currentTime = Math.max(0, Math.min(totalDuration(), seconds));
+      seekSourceToCurrent(); drawFrame();
+      return { ok: true, currentTime: state.currentTime };
+    },
+    play: () => { play(); return { ok: true }; },
+    pause: () => { pause(); return { ok: true }; },
+    setZoom: (z) => { setZoom(z); return { ok: true, zoom: state.zoom }; },
+
+    // --- Project save/load (JSON recipe) ---
+    getProject: () => {
+      // Same shape as saveProject() but returns the object instead of downloading it.
+      return {
+        version: PROJECT_VERSION,
+        sources: state.sources.map(s => ({ id: s.id, fileName: s.fileName, duration: s.duration, width: s.width, height: s.height, fileSize: s.fileSize, fileLastModified: s.fileLastModified, fileHash: sourceFileHash(s) })),
+        clips: state.clips.map(c => ({
+          id: c.id, sourceId: c.sourceId, name: c.name,
+          sourceStart: c.sourceStart, sourceEnd: c.sourceEnd, speed: c.speed,
+          filters: { ...c.filters }, transform: { ...c.transform },
+          text: { ...c.text }, stickers: c.stickers.map(s => ({ ...s })),
+          transitions: { ...c.transitions }, crossTransition: { ...c.crossTransition },
+          audio: { ...c.audio }
+        })),
+        selectedClipId: state.selectedClipId,
+        globalSpeed: state.globalSpeed, zoom: state.zoom, muted: state.muted,
+        currentTime: state.currentTime
+      };
+    },
+    applyProject: async (project, opts) => {
+      // Loads sources referenced by the project if provided with `sources:[{url,fileName}]`.
+      // If project.sources have `url` fields, fetch them into the editor first.
+      try {
+        if (project.sources) {
+          for (const ps of project.sources) {
+            if (ps.url && !state.sources.find(s => s.fileName === ps.fileName)) {
+              await window.editorAPI.loadSource(ps.url, ps.fileName);
+            }
+          }
+        }
+        applyProject(project, opts || {});
+        renderTimeline(); drawFrame();
+        return { ok: true, clipCount: state.clips.length };
+      } catch (e) { return { ok: false, error: e.message }; }
+    },
+
+    // --- Export ---
+    // Renders the timeline to WebM via the editor's proven renderToWebM() pipeline and
+    // returns the result as base64 (so it can cross page.evaluate). Honors exportCancel.
+    exportWebM: async ({ onProgress } = {}) => {
+      state.exportCancel = false;
+      // If a progress callback is provided, poll the exportStatus text while rendering.
+      let pollHandle = null;
+      if (onProgress) {
+        pollHandle = setInterval(() => { try { onProgress(state.currentTime / Math.max(0.001, totalDuration())); } catch(e){} }, 200);
+      }
+      try {
+        const blob = await renderToWebM();
+        if (pollHandle) clearInterval(pollHandle);
+        const buf = await blob.arrayBuffer();
+        // Convert to base64 in chunks (the spread operator blows the stack for large blobs).
+        const bytes = new Uint8Array(buf);
+        const CHUNK = 0x8000;
+        let b64 = '';
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+          b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+        }
+        b64 = btoa(b64);
+        return { ok: true, mime: blob.type, size: blob.size, base64: b64, cancelled: state.exportCancel };
+      } catch (e) {
+        if (pollHandle) clearInterval(pollHandle);
+        state.exporting = false;
+        return { ok: false, error: e.message || String(e) };
+      }
+    },
+    cancelExport: () => { state.exportCancel = true; if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') state.mediaRecorder.stop(); state.sources.forEach(s => { if (!s.el.paused) s.el.pause(); }); state.exporting = false; $('exportModal').classList.remove('show'); updateTransport(); return { ok: true }; },
+
+    // --- Canvas snapshot (for verification) ---
+    // Returns a PNG data URL of the current frame. Useful for the AI to "see" the result.
+    snapshotFrame: () => { drawFrame(); return canvas.toDataURL('image/png'); },
+
+    // --- Reset ---
+    reset: () => {
+      state.clips = []; state.sources.forEach(s => { try { URL.revokeObjectURL(s.url); s.el.pause(); s.el.src = ''; } catch(e){} });
+      state.sources = []; state.selectedClipId = null; state.selectedLinkId = null; state.selectedStickerIdx = -1;
+      state.currentTime = 0; state.zoom = 1;
+      state.thumbCache.clear(); state.frameCache.clear();
+      canvas.classList.add('hidden'); $('dropzone').classList.remove('hidden'); $('overlayTop').classList.add('hidden');
+      renderTimeline();
+      return { ok: true };
+    }
+  };
+
+  // Expose a convenience alias so the API can call itself (used in applyProject above).
+  const api = window.editorAPI;
+
+  renderTimeline();
+})();
+</script>
+</body>
+</html>
